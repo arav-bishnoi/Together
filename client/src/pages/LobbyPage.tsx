@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Film,
   Lock,
@@ -15,19 +15,45 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import type { RoomSession } from '../types/index.js';
+import { apiUrl } from '../config/api.js';
 
 interface LobbyPageProps {
   onSessionReady?: (session: RoomSession) => void;
 }
 
 export const LobbyPage: React.FC<LobbyPageProps> = ({ onSessionReady }) => {
-  const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
+  // Lazy initializers parse URL invitation query parameters synchronously on initial mount
+  const [roomId, setRoomId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('room') || '';
+    }
+    return '';
+  });
+
+  const [inviteSecret, setInviteSecret] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('invite') || params.get('key') || '';
+    }
+    return '';
+  });
+
+  const [activeTab, setActiveTab] = useState<'create' | 'join'>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlRoom = params.get('room');
+      const urlInvite = params.get('invite') || params.get('key');
+      if (urlRoom && urlInvite) {
+        return 'join';
+      }
+    }
+    return 'create';
+  });
 
   // Form states
   const [hostName, setHostName] = useState('');
   const [guestName, setGuestName] = useState('');
-  const [roomId, setRoomId] = useState('');
-  const [inviteSecret, setInviteSecret] = useState('');
 
   // UI status
   const [isLoading, setIsLoading] = useState(false);
@@ -38,20 +64,6 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ onSessionReady }) => {
   const [isRevoked, setIsRevoked] = useState(false);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
 
-  // Inspect URL for invitation query parameters on mount
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const urlRoom = params.get('room');
-    // Supports both 'invite' and 'key' for backwards compatibility
-    const urlInvite = params.get('invite') || params.get('key');
-
-    if (urlRoom && urlInvite) {
-      setRoomId(urlRoom);
-      setInviteSecret(urlInvite);
-      setActiveTab('join');
-    }
-  }, []);
-
   const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -59,7 +71,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ onSessionReady }) => {
     setActionSuccessMessage(null);
 
     try {
-      const res = await fetch('/api/rooms/create', {
+      const res = await fetch(apiUrl('/api/rooms/create'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hostName: hostName.trim() || 'Host' }),
@@ -101,7 +113,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ onSessionReady }) => {
     setActionSuccessMessage(null);
 
     try {
-      const res = await fetch('/api/rooms/join', {
+      const res = await fetch(apiUrl('/api/rooms/join'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -145,7 +157,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ onSessionReady }) => {
     setErrorMessage(null);
 
     try {
-      const res = await fetch('/api/rooms/revoke-invite', {
+      const res = await fetch(apiUrl('/api/rooms/revoke-invite'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -174,7 +186,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ onSessionReady }) => {
     setErrorMessage(null);
 
     try {
-      const res = await fetch('/api/rooms/regenerate-invite', {
+      const res = await fetch(apiUrl('/api/rooms/regenerate-invite'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -193,7 +205,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ onSessionReady }) => {
         inviteSecret: data.newInviteSecret,
       });
       setIsRevoked(false);
-      setActionSuccessMessage('New invitation generated. Send the updated link to your partner.');
+      setActionSuccessMessage('New invitation generated. Send the updated link to your guest.');
     } catch (err: any) {
       setErrorMessage(err.message);
     } finally {
@@ -231,12 +243,12 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ onSessionReady }) => {
         alignItems: 'center',
         justifyContent: 'center',
         padding: '36px 16px',
-        background: 'radial-gradient(circle at 50% 15%, #18122d 0%, var(--bg-deep) 70%)',
+        background: 'radial-gradient(circle at 50% 15%, #191C14 0%, var(--bg-deep) 70%)',
         position: 'relative',
         minHeight: '100dvh',
       }}
     >
-      {/* Subtle ambient violet illumination */}
+      {/* Subtle ambient accent illumination */}
       <div
         style={{
           position: 'absolute',
@@ -245,7 +257,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ onSessionReady }) => {
           transform: 'translate(-50%, -50%)',
           width: '380px',
           height: '380px',
-          background: 'radial-gradient(circle, rgba(139, 92, 246, 0.14) 0%, transparent 70%)',
+          background: 'radial-gradient(circle, rgba(212, 222, 149, 0.12) 0%, transparent 70%)',
           pointerEvents: 'none',
         }}
       />
@@ -260,36 +272,36 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ onSessionReady }) => {
               gap: '8px',
               padding: '6px 16px',
               borderRadius: 'var(--radius-full)',
-              background: 'rgba(139, 92, 246, 0.1)',
+              background: 'rgba(212, 222, 149, 0.1)',
               border: '1px solid var(--border-subtle)',
-              color: 'var(--accent-muted)',
+              color: 'var(--accent-primary)',
               fontSize: '0.82rem',
               fontWeight: 500,
               letterSpacing: '0.02em',
               marginBottom: '16px',
             }}
           >
-            <Sparkles size={14} color="#a78bfa" />
-            <span>Private Two-Person Cinema</span>
+            <Sparkles size={14} color="var(--accent-primary)" />
+            <span>Private Watch Party</span>
           </div>
 
           <h1
             style={{
               fontFamily: 'var(--font-heading)',
-              fontSize: '2.4rem',
+              fontSize: '2.5rem',
               fontWeight: 700,
               letterSpacing: '-0.02em',
-              background: 'linear-gradient(135deg, #ffffff 40%, #c4b5fd 100%)',
+              background: 'linear-gradient(135deg, #F5F6EE 30%, #D4DE95 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
               marginBottom: '8px',
             }}
           >
-            Our Watch Party
+            Together
           </h1>
 
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: 1.5 }}>
-            A private, synchronized sanctuary for two.
+            Watch videos, share screens, and talk in a private space for two.
           </p>
         </header>
 
@@ -357,14 +369,14 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ onSessionReady }) => {
                 }}
               >
                 <ShieldAlert size={16} />
-                <span>Current invitation link is REVOKED. Generate a new link below to allow your partner to join.</span>
+                <span>Current invitation link is REVOKED. Generate a new link below to allow your guest to join.</span>
               </div>
             )}
 
             {/* Room Identifier Card */}
             <div
               style={{
-                background: 'rgba(10, 8, 17, 0.8)',
+                background: 'rgba(25, 28, 20, 0.85)',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: 'var(--radius-md)',
                 padding: '14px 18px',
@@ -498,7 +510,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ onSessionReady }) => {
             <div
               style={{
                 display: 'flex',
-                background: 'rgba(8, 6, 14, 0.75)',
+                background: 'rgba(16, 18, 13, 0.85)',
                 borderRadius: 'var(--radius-full)',
                 padding: '4px',
                 marginBottom: '24px',
@@ -522,8 +534,8 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ onSessionReady }) => {
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
                   background: activeTab === 'create' ? 'var(--accent-primary)' : 'transparent',
-                  color: activeTab === 'create' ? '#ffffff' : 'var(--text-secondary)',
-                  boxShadow: activeTab === 'create' ? '0 2px 10px rgba(139, 92, 246, 0.35)' : 'none',
+                  color: activeTab === 'create' ? 'var(--text-on-accent)' : 'var(--text-secondary)',
+                  boxShadow: activeTab === 'create' ? '0 2px 10px rgba(212, 222, 149, 0.35)' : 'none',
                 }}
               >
                 Create Room
@@ -545,8 +557,8 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ onSessionReady }) => {
                   cursor: 'pointer',
                   transition: 'all 0.2s ease',
                   background: activeTab === 'join' ? 'var(--accent-primary)' : 'transparent',
-                  color: activeTab === 'join' ? '#ffffff' : 'var(--text-secondary)',
-                  boxShadow: activeTab === 'join' ? '0 2px 10px rgba(139, 92, 246, 0.35)' : 'none',
+                  color: activeTab === 'join' ? 'var(--text-on-accent)' : 'var(--text-secondary)',
+                  boxShadow: activeTab === 'join' ? '0 2px 10px rgba(212, 222, 149, 0.35)' : 'none',
                 }}
               >
                 Join Room

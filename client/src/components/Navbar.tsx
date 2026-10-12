@@ -1,5 +1,5 @@
 import React from 'react';
-import { Heart, UserPlus, LogOut, Sparkles, Tv, Users } from 'lucide-react';
+import { UserPlus, LogOut, Tv, Users } from 'lucide-react';
 import type { ConnectionStatus, ParticipantRole } from '../types/index.js';
 
 interface NavbarProps {
@@ -27,9 +27,8 @@ export const Navbar: React.FC<NavbarProps> = ({
     <header className="room-navbar">
       <div className="brand-section">
         <div className="brand-title">
-          <Heart className="pulse-heart" size={20} fill="#ec4899" />
-          <span>Date Night</span>
-          <Sparkles size={16} color="#c084fc" />
+          <Tv size={20} color="var(--accent-primary)" />
+          <span>Together</span>
         </div>
 
         <div className="status-badge">
@@ -58,15 +57,15 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div
           style={{
             fontSize: '0.8rem',
-            color: '#a19bb8',
-            background: 'rgba(255, 255, 255, 0.05)',
+            color: 'var(--text-secondary)',
+            background: 'var(--bg-surface)',
             padding: '3px 10px',
             borderRadius: 'var(--radius-full)',
             border: '1px solid var(--border-subtle)',
           }}
         >
           <span>Room: </span>
-          <strong style={{ color: '#d8b4fe' }}>{roomId}</strong>
+          <strong style={{ color: 'var(--accent-primary)' }}>{roomId}</strong>
           <span style={{ marginLeft: '6px', opacity: 0.7 }}>({role})</span>
         </div>
 
@@ -80,10 +79,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               borderRadius: 'var(--radius-full)',
               fontSize: '0.75rem',
               fontWeight: 600,
-              background: 'rgba(236, 72, 153, 0.2)',
-              border: '1px solid rgba(236, 72, 153, 0.4)',
-              color: '#f472b6',
-              animation: 'heartPulse 2s infinite ease-in-out',
+              background: 'rgba(212, 222, 149, 0.15)',
+              border: '1px solid var(--border-hover)',
+              color: 'var(--accent-primary)',
             }}
           >
             <Tv size={13} />
@@ -103,12 +101,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             {viewMode === 'theatre' ? (
               <>
-                <Users size={15} color="#c084fc" />
+                <Users size={15} color="var(--accent-primary)" />
                 <span>Side by Side</span>
               </>
             ) : (
               <>
-                <Tv size={15} color="#ec4899" />
+                <Tv size={15} color="var(--accent-primary)" />
                 <span>Theatre View</span>
               </>
             )}
@@ -121,7 +119,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           title="Share invitation link"
           style={{ padding: '6px 14px', fontSize: '0.85rem' }}
         >
-          <UserPlus size={16} color="#c084fc" />
+          <UserPlus size={16} color="var(--accent-primary)" />
           <span>Invite</span>
         </button>
 

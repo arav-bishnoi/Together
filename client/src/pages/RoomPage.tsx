@@ -8,6 +8,7 @@ import { FloatingCamera } from '../components/FloatingCamera.js';
 import { AudioUnlockBanner } from '../components/AudioUnlockBanner.js';
 import { InviteModal } from '../components/InviteModal.js';
 import { User, MicOff, AlertCircle, X, UserPlus, Clock, WifiOff, RefreshCw } from 'lucide-react';
+import { apiUrl } from '../config/api.js';
 import '../styles/room.css';
 
 interface RoomPageProps {
@@ -56,12 +57,14 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
   const theatreStageRef = useRef<HTMLDivElement | null>(null);
 
   const hasScreenShare = !!(remoteScreenTrack || localScreenTrack);
+  const prevScreenShareRef = useRef(hasScreenShare);
 
-  // Automatically switch to theatre view if screen share starts
+  // Automatically switch to theatre view when screen sharing starts
   useEffect(() => {
-    if (hasScreenShare) {
+    if (hasScreenShare && !prevScreenShareRef.current) {
       setViewMode('theatre');
     }
+    prevScreenShareRef.current = hasScreenShare;
   }, [hasScreenShare]);
 
   // Connect to LiveKit SFU on mount using provided credentials and ICE config
@@ -73,7 +76,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
   const handleManualRetry = async () => {
     setIsRetrying(true);
     try {
-      const res = await fetch('/api/rooms/reconnect', {
+      const res = await fetch(apiUrl('/api/rooms/reconnect'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -135,7 +138,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
   const handleLeave = async () => {
     try {
       sessionStorage.removeItem('watch_party_session');
-      await fetch('/api/rooms/leave', {
+      await fetch(apiUrl('/api/rooms/leave'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -150,11 +153,11 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
     onLeave();
   };
 
-  const partnerName = remoteParticipant?.name || 'Partner';
+  const guestName = remoteParticipant?.name || 'Guest';
 
   return (
     <div className="room-container">
-      {/* Background audio player for partner's live voice */}
+      {/* Background audio player for remote participant's live voice */}
       <audio ref={remoteAudioRef} autoPlay />
 
       {/* Top Navbar */}
@@ -257,9 +260,9 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
             theatreRef={theatreStageRef}
           />
 
-          {/* Draggable Floating PIP Camera: Remote Partner */}
+          {/* Draggable Floating PIP Camera: Remote Participant */}
           <FloatingCamera
-            participantName={partnerName}
+            participantName={guestName}
             track={remoteCameraTrack && !isRemoteCameraMuted ? remoteCameraTrack : null}
             isMuted={isRemoteMicMuted}
             isSpeaking={remoteIsSpeaking}
@@ -299,7 +302,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
             overflowY: 'auto',
           }}
         >
-          {/* Frame 1: Remote Partner Video */}
+          {/* Frame 1: Remote Participant Video */}
           <div
             className={`glass-panel ${remoteIsSpeaking ? 'speaking-ring' : ''}`}
             style={{
@@ -311,7 +314,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: '#090712',
+              background: 'var(--bg-elevated)',
               border: '1.5px solid var(--border-subtle)',
               borderRadius: 'var(--radius-lg)',
               boxShadow: '0 12px 35px rgba(0, 0, 0, 0.6)',
@@ -342,7 +345,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
                     }}
                   >
                     <div className="avatar-circle">
-                      {partnerName.charAt(0).toUpperCase() || <User size={24} />}
+                      {guestName.charAt(0).toUpperCase() || <User size={24} />}
                     </div>
                     <span style={{ fontSize: '0.9rem', color: 'var(--text-tertiary)' }}>Camera is turned off</span>
                   </div>
@@ -375,7 +378,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
                       backdropFilter: 'blur(8px)',
                     }}
                   >
-                    <span>{partnerName}</span>
+                    <span>{guestName}</span>
                     {isRemoteMicMuted && <MicOff size={13} color="var(--danger)" />}
                   </div>
                 </div>
@@ -394,10 +397,10 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
               >
                 <Clock size={40} color="var(--accent-muted)" style={{ marginBottom: '14px' }} />
                 <h3 style={{ fontSize: '1.2rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
-                  Waiting for Partner to Join
+                  Waiting for Guest to Join
                 </h3>
                 <p style={{ fontSize: '0.85rem', maxWidth: '300px', lineHeight: 1.5, marginBottom: '18px' }}>
-                  Share your private invitation link with your partner so she can connect to this room.
+                  Share your private invitation link with your guest so they can connect to this room.
                 </p>
                 <button
                   type="button"
@@ -424,7 +427,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: '#090712',
+              background: 'var(--bg-elevated)',
               border: '1.5px solid var(--border-subtle)',
               borderRadius: 'var(--radius-lg)',
               boxShadow: '0 12px 35px rgba(0, 0, 0, 0.6)',

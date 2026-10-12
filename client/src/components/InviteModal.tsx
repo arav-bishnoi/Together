@@ -43,7 +43,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Link size={20} color="var(--accent-muted)" />
+            <Link size={20} color="var(--accent-primary)" />
             <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>
               Invite to Watch Party
             </h3>
@@ -63,12 +63,12 @@ export const InviteModal: React.FC<InviteModalProps> = ({
         </div>
 
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '18px', lineHeight: 1.5 }}>
-          Send this private one-click link to your partner so she can join immediately.
+          Send this private one-click link to your guest so they can join immediately.
         </p>
 
         {/* Full One-Click Link */}
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--accent-muted)', marginBottom: '6px', fontWeight: 500 }}>
+          <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--accent-primary)', marginBottom: '6px', fontWeight: 500 }}>
             Private Invitation Link:
           </label>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -93,7 +93,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
         {/* Room Code breakdown */}
         <div
           style={{
-            background: 'rgba(255, 255, 255, 0.03)',
+            background: 'var(--bg-card)',
             border: '1px solid var(--border-subtle)',
             borderRadius: 'var(--radius-md)',
             padding: '12px 16px',
@@ -118,7 +118,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
-          <ShieldCheck size={16} color="var(--success)" />
+          <ShieldCheck size={16} color="var(--accent-primary)" />
           <span>Only 2 people can enter. Strangers cannot join.</span>
         </div>
       </div>

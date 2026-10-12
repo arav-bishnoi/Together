@@ -127,7 +127,7 @@ export function useLiveKit() {
         }
       });
 
-      // Remote track muted/unmuted events (e.g. partner toggles their mic/cam)
+      // Remote track muted/unmuted events (e.g. remote participant toggles their mic/cam)
       room.on(RoomEvent.TrackMuted, (pub: TrackPublication, participant: Participant) => {
         if (participant.identity !== room.localParticipant?.identity) {
           if (pub.source === Track.Source.Camera) setIsRemoteCameraMuted(true);
@@ -474,7 +474,7 @@ export function useLiveKit() {
   }, [disconnect]);
 
   return {
-    room: roomRef.current,
+    getRoom: () => roomRef.current,
     connectionStatus,
     isOffline,
     errorMessage,

@@ -1,0 +1,33 @@
+# =====================================================================
+# LiveKit SFU Production Configuration
+# =====================================================================
+# For public cloud deployment (VPS with Docker)
+# WebRTC media traffic requires open UDP ports and public IP discovery.
+
+port: 7880
+bind_addresses:
+  - ""
+
+rtc:
+  # TCP fallback port for strict corporate/restricted network environments
+  tcp_port: 7881
+
+  # UDP port range for real-time WebRTC media streams (RTP/RTCP)
+  # Ensure these ports are open in your VPS firewall (e.g. ufw allow 50000:50100/udp)
+  port_range_start: 50000
+  port_range_end: 50100
+
+  # Automatic public IP discovery using Google STUN
+  use_external_ip: true
+  stun_servers:
+    - "stun.l.google.com:19302"
+    - "stun1.l.google.com:19302"
+
+# API keys and secrets are injected via LIVEKIT_KEYS or container environment
+# Format in environment variable:
+#   LIVEKIT_KEYS: "<API_KEY>: <API_SECRET>"
+keys: {}
+
+logging:
+  level: info
+  json: false

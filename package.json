@@ -2,7 +2,7 @@
   "name": "our-watch-party",
   "version": "1.0.0",
   "private": true,
-  "description": "Private two-person watch party for long-distance couples",
+  "description": "Together - Private two-person watch party for watching videos together",
   "scripts": {
     "dev:server": "npm --prefix server run dev",
     "dev:client": "npm --prefix client run dev",

@@ -56,6 +56,17 @@ class LiveKitService {
   }
 
   /**
+   * Immediately terminates and evicts all connections from the LiveKit room
+   */
+  public async deleteRoom(roomId: string): Promise<void> {
+    try {
+      await this.roomService.deleteRoom(roomId);
+    } catch (err: any) {
+      console.warn(`[LiveKitService] deleteRoom note for ${roomId}:`, err?.message || err);
+    }
+  }
+
+  /**
    * Retrieves active connected participant count from LiveKit SFU
    */
   public async getLiveKitParticipantCount(roomId: string): Promise<number> {

@@ -153,16 +153,16 @@ export const ScreenViewer: React.FC<ScreenViewerProps> = ({
         </>
       ) : (
         <div className="theatre-standby">
-          <Film size={52} color="#c084fc" />
-          <h2>Cozy Date Night Theatre</h2>
+          <Film size={52} color="var(--accent-primary)" />
+          <h2>Watch Together</h2>
           <p>
-            The screen is currently waiting for a video to begin. Settle in with some snacks!
+            The screen is currently waiting for video or screen share to begin.
           </p>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center', marginBottom: '24px' }}>
             {isHost && (
               <button
-                className="btn-romantic"
+                className="btn-primary"
                 onClick={onStartShare}
               >
                 <Share2 size={18} />
@@ -179,7 +179,7 @@ export const ScreenViewer: React.FC<ScreenViewerProps> = ({
               title="Open open-source test video in a new tab to test screen + audio sharing"
               style={{ fontSize: '0.85rem', padding: '8px 16px' }}
             >
-              <ExternalLink size={16} color="#c084fc" />
+              <ExternalLink size={16} color="var(--accent-primary)" />
               <span>Open Free HD Test Video</span>
             </button>
           </div>
@@ -187,7 +187,7 @@ export const ScreenViewer: React.FC<ScreenViewerProps> = ({
           <div className="tips-box">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Info size={16} color="#ec4899" />
+                <Info size={16} color="var(--accent-primary)" />
                 <strong>Tips for Best Video & Sound:</strong>
               </div>
               <button
@@ -196,7 +196,7 @@ export const ScreenViewer: React.FC<ScreenViewerProps> = ({
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: '#f472b6',
+                  color: 'var(--accent-primary)',
                   fontSize: '0.78rem',
                   textDecoration: 'underline',
                   cursor: 'pointer',
@@ -223,32 +223,32 @@ export const ScreenViewer: React.FC<ScreenViewerProps> = ({
         <div className="modal-overlay" onClick={() => setShowDrmModal(false)}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-              <ShieldAlert size={24} color="#f472b6" />
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 600, color: 'var(--text-main)', margin: 0 }}>
+              <ShieldAlert size={24} color="var(--accent-primary)" />
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
                 Streaming Services & DRM Limitations
               </h3>
             </div>
-            <p style={{ fontSize: '0.88rem', color: '#cbd5e1', lineHeight: 1.5, marginBottom: '12px' }}>
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '12px' }}>
               Commercial streaming services (like <strong>Netflix, Amazon Prime Video, Disney+, Hulu</strong>) enforce hardware-level DRM (Digital Rights Management via Widevine / HDCP).
             </p>
-            <p style={{ fontSize: '0.88rem', color: '#cbd5e1', lineHeight: 1.5, marginBottom: '12px' }}>
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '12px' }}>
               When you attempt to screen share these protected tabs, the browser and operating system automatically black out the video and mute protected audio. This is a browser security constraint, not an application error.
             </p>
             <div
               style={{
-                background: 'rgba(236, 72, 153, 0.1)',
-                border: '1px solid rgba(236, 72, 153, 0.3)',
+                background: 'rgba(212, 222, 149, 0.08)',
+                border: '1px solid var(--border-subtle)',
                 borderRadius: 'var(--radius-md)',
                 padding: '12px',
                 fontSize: '0.85rem',
-                color: '#fbcfe8',
+                color: 'var(--text-secondary)',
                 marginBottom: '20px',
               }}
             >
-              <strong>Recommended for Date Night:</strong>
+              <strong style={{ color: 'var(--text-primary)' }}>Recommended for Watch Parties:</strong>
               <ul style={{ paddingLeft: '16px', margin: '6px 0 0' }}>
                 <li>YouTube, Twitch, Vimeo, and web video players.</li>
-                <li>Your own personal movie or show files: simply drag any .mp4 or .webm file into an empty browser tab and share that tab with audio!</li>
+                <li>Your own personal movie or video files: simply drag any .mp4 or .webm file into an empty browser tab and share that tab with audio!</li>
               </ul>
             </div>
             <button

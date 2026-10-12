@@ -1,0 +1,35 @@
+# =====================================================================
+# Caddy Production Reverse-Proxy Configuration
+# =====================================================================
+# Caddy automatically provisions and renews Let's Encrypt TLS/SSL certificates
+# for your domains with zero manual configuration.
+
+# Replace with your actual domain name
+party.yourdomain.com {
+    encode zstd gzip
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # Route API calls to the Express backend container
+    handle /api/* {
+        reverse_proxy server:3001
+    }
+
+    # Serve the static production build of the Vite React frontend
+    handle {
+        root * /srv/client-dist
+        try_files {path} /index.html
+        file_server
+    }
+}
+
+# Subdomain for LiveKit WebRTC Signalling over secure WebSockets (WSS)
+livekit.yourdomain.com {
+    reverse_proxy livekit:7880
+}

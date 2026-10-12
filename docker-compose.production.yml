@@ -1,0 +1,88 @@
+# =====================================================================
+# Production Docker Compose Stack: Our Watch Party
+# =====================================================================
+# Runs all components self-contained on a single low-cost Linux VPS:
+# 1. Caddy: Automatic Let's Encrypt TLS reverse-proxy & static frontend host
+# 2. Server: Node.js Express API & cryptographic room manager
+# 3. LiveKit: WebRTC SFU media server for video, audio, and screensharing
+# 4. Coturn: STUN / TURN relay server for mobile carrier (4G/5G) NAT traversal
+# =====================================================================
+
+services:
+  # Reverse proxy with automatic HTTPS
+  caddy:
+    image: caddy:2-alpine
+    container_name: watchparty-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./client/dist:/srv/client-dist:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - server
+      - livekit
+    networks:
+      - watchparty-network
+
+  # Node.js Express API Backend
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: watchparty-server
+    restart: unless-stopped
+    env_file:
+      - ./server/.env
+    expose:
+      - "3001"
+    depends_on:
+      - livekit
+    networks:
+      - watchparty-network
+
+  # LiveKit SFU WebRTC Media Server
+  livekit:
+    image: livekit/livekit-server:v1.8
+    container_name: watchparty-livekit
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    volumes:
+      - ./livekit.production.yaml:/etc/livekit.yaml:ro
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
+    ports:
+      # Signalling port (reverse proxied via Caddy as wss://livekit.domain)
+      - "7880:7880"
+      # TCP fallback port for restrictive networks
+      - "7881:7881"
+      # WebRTC UDP RTP/RTCP Media range
+      - "50000-50100:50000-50100/udp"
+    networks:
+      - watchparty-network
+
+  # Coturn TURN/STUN Relay Server for cellular CGNAT traversal
+  coturn:
+    image: coturn/coturn:4.6-alpine
+    container_name: watchparty-coturn
+    restart: unless-stopped
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "49152-49250:49152-49250/udp"
+    networks:
+      - watchparty-network
+
+networks:
+  watchparty-network:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

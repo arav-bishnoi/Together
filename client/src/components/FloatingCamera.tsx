@@ -81,7 +81,7 @@ export const FloatingCamera: React.FC<FloatingCameraProps> = ({
           style={{
             background: 'transparent',
             border: 'none',
-            color: '#d8b4fe',
+            color: 'var(--accent-primary)',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
@@ -110,7 +110,7 @@ export const FloatingCamera: React.FC<FloatingCameraProps> = ({
               <div className="avatar-circle">
                 {participantName.charAt(0).toUpperCase() || <User size={20} />}
               </div>
-              <span style={{ fontSize: '0.75rem', marginTop: '6px', color: '#a78bfa' }}>
+              <span style={{ fontSize: '0.75rem', marginTop: '6px', color: 'var(--text-secondary)' }}>
                 Camera Off
               </span>
             </div>

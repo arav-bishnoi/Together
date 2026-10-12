@@ -11,6 +11,8 @@ export const roomRouter = Router();
 const createRoomLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: { error: 'Too many rooms created. Please wait a minute.' },
 });
 
@@ -18,7 +20,18 @@ const createRoomLimiter = rateLimit({
 const joinRoomLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: { error: 'Too many join attempts. Please slow down.' },
+});
+
+// Rate limiter for administrative actions (revoke, regenerate, close)
+const adminActionLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many administrative requests. Please slow down.' },
 });
 
 // Input validation schemas
@@ -56,13 +69,17 @@ const ReconnectSchema = z.object({
   displayName: z.string().trim().min(1).max(40).optional(),
 });
 
-// Adapt LiveKit URL for local LAN connections (e.g. mobile phone on Wi-Fi)
+// Resolve LiveKit URL: prioritizes explicitly configured public URL, then adapts protocol
 const resolveLiveKitUrl = (req: Request): string => {
+  if (config.publicLivekitUrl) {
+    return config.publicLivekitUrl;
+  }
   if (process.env.PUBLIC_LIVEKIT_URL) {
-    return process.env.PUBLIC_LIVEKIT_URL;
+    return process.env.PUBLIC_LIVEKIT_URL.trim();
   }
   if (config.livekitUrl.includes('127.0.0.1') || config.livekitUrl.includes('localhost')) {
-    const protocol = req.protocol === 'https' ? 'wss' : 'ws';
+    const isHttps = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https';
+    const protocol = isHttps ? 'wss' : 'ws';
     return `${protocol}://${req.hostname}:7880`;
   }
   return config.livekitUrl;
@@ -266,7 +283,7 @@ roomRouter.post('/reconnect', joinRoomLimiter, async (req: Request, res: Respons
  * POST /api/rooms/revoke-invite
  * Host revokes the current invitation credential
  */
-roomRouter.post('/revoke-invite', async (req: Request, res: Response) => {
+roomRouter.post('/revoke-invite', adminActionLimiter, async (req: Request, res: Response) => {
   try {
     const parseResult = HostActionSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -291,7 +308,7 @@ roomRouter.post('/revoke-invite', async (req: Request, res: Response) => {
  * POST /api/rooms/regenerate-invite
  * Host generates a fresh invitation credential
  */
-roomRouter.post('/regenerate-invite', async (req: Request, res: Response) => {
+roomRouter.post('/regenerate-invite', adminActionLimiter, async (req: Request, res: Response) => {
   try {
     const parseResult = HostActionSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -319,7 +336,7 @@ roomRouter.post('/regenerate-invite', async (req: Request, res: Response) => {
  * POST /api/rooms/close
  * Host closes the watch party room
  */
-roomRouter.post('/close', async (req: Request, res: Response) => {
+roomRouter.post('/close', adminActionLimiter, async (req: Request, res: Response) => {
   try {
     const parseResult = HostActionSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -331,6 +348,9 @@ roomRouter.post('/close', async (req: Request, res: Response) => {
     if (!result.success) {
       return res.status(403).json({ error: result.error });
     }
+
+    // Immediately terminate media sessions on LiveKit SFU
+    await livekitService.deleteRoom(roomId);
 
     console.log(`[RoomManager] Room closed by host: roomId=${roomId}`);
     return res.json({ success: true, message: 'Watch party closed.' });
@@ -355,10 +375,13 @@ roomRouter.post('/leave', (req: Request, res: Response) => {
 
 /**
  * GET /api/rooms/status/:roomId
- * Public sanitized room status
+ * Public sanitized room status with rate limiting & validation
  */
-roomRouter.get('/status/:roomId', (req: Request, res: Response) => {
-  const roomId = Array.isArray(req.params.roomId) ? req.params.roomId[0] : req.params.roomId;
-  const status = roomManager.getRoomStatus(roomId);
+roomRouter.get('/status/:roomId', joinRoomLimiter, (req: Request, res: Response) => {
+  const rawRoomId = Array.isArray(req.params.roomId) ? req.params.roomId[0] : req.params.roomId;
+  if (!rawRoomId || typeof rawRoomId !== 'string' || rawRoomId.length > 40) {
+    return res.status(400).json({ exists: false, error: 'Invalid room ID format.' });
+  }
+  const status = roomManager.getRoomStatus(rawRoomId.trim());
   return res.json(status);
 });

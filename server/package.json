@@ -6,6 +6,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "test": "tsx --test tests/**/*.test.ts",
+    "test:turn": "tsx scripts/verifyTurnConnectivity.ts",
     "start": "node dist/index.js"
   },
   "dependencies": {

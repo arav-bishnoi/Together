@@ -1,18 +1,18 @@
-# Project Status: Together (Our Watch Party)
+# Project Status: Together
 
-**Last Updated:** Phase 5 Completion  
+**Last Updated:** Visual Rebranding & Design System Complete  
 **Repository:** [github.com/arav-bishnoi/Together](https://github.com/arav-bishnoi/Together)  
 **Branch:** `main`  
-**Current Resume Point:** **Phase 6: Production Deployment & Network Reliability**
+**Current Resume Point:** **Phase 6: Live VPS Domain Linking & Final Cross-Network Verification**
 
 ---
 
 ## 1. Project Overview
 
-A private, secure, two-person watch-party web application built for a long-distance couple.
+A private, secure, two-person watch-party web application built for watching videos together with friends, family, or partners.
 - **Host:** Desktop / Laptop browser (shares screen/audio, camera, and microphone).
-- **Guest:** Android phone (watches screen, camera, and microphone in a mobile-optimized theater mode).
-- **Theme:** Romantic, modern, dark purple glassmorphism aesthetic with zero childish cliches.
+- **Guest:** Android phone or secondary browser (watches screen, camera, and microphone in a mobile-optimized theater mode).
+- **Theme:** Modern, sleek dark design with muted yellow-green accent (`#D4DE95`), elevated surfaces, and clean glassmorphism.
 
 ---
 
@@ -45,15 +45,17 @@ A private, secure, two-person watch-party web application built for a long-dista
 └────────────────────────┘
 ```
 
-- **Frontend (`/client`)**: React 19, TypeScript, Vite, Vanilla CSS with custom design tokens (`index.css`, `room.css`), LiveKit Client SDK (`livekit-client`).
-- **Backend (`/server`)**: Node.js, Express, TypeScript, Zod schema validation, LiveKit Server SDK (`livekit-server-sdk`), in-memory room manager (`roomManager.ts`).
-- **Media Engine**: LiveKit SFU (`livekit-server`), WebRTC with STUN fallback (`stun:stun.l.google.com:19302`) and optional TURN relay support.
+- **Frontend (`/client`)**: React 19, TypeScript, Vite, Vanilla CSS with custom design tokens (`index.css`, `room.css`), LiveKit Client SDK (`livekit-client`), dynamic API URL adapter (`config/api.ts`).
+- **Backend (`/server`)**: Node.js, Express, TypeScript, Zod schema validation, LiveKit Server SDK (`livekit-server-sdk`), in-memory room manager (`roomManager.ts`), security headers, hardened CORS, and rate limiting.
+- **Media Engine**: LiveKit SFU (`livekit-server`), WebRTC with STUN fallback (`stun:stun.l.google.com:19302`) and Coturn TURN relay for mobile cellular CGNAT traversal.
+- **Reverse Proxy**: Caddy with automatic Let's Encrypt TLS/SSL certificates and WebSocket reverse proxying.
 - **Security**:
   - Cryptographically isolated 128-bit credentials (`hostSecret` for host control vs. `inviteSecret` for guest join).
   - Short-lived JWT media tokens (30 min TTL), strictly minted server-side.
   - Constant-time string comparisons (`crypto.timingSafeEqual`) to prevent timing side-channel attacks.
   - Strict 2-participant room boundary enforced at both API and SFU layers.
-  - Zero server secrets or API keys exposed in frontend bundles.
+  - Zero server secrets or API keys exposed in frontend bundles or Git.
+  - Production refusal to start if default development credentials (`devkey`/`secret`) are detected.
 
 ---
 
@@ -63,24 +65,34 @@ A private, secure, two-person watch-party web application built for a long-dista
 watch-party/
 ├── README.md                           # Documentation, run commands, ports & test checklist
 ├── PROJECT_STATUS.md                   # Architecture, phase tracking, status & resume point
+├── DEPLOYMENT.md                       # Complete production deployment & cross-network guide
+├── Caddyfile                           # Production reverse proxy with automatic HTTPS
+├── docker-compose.production.yml       # Production container orchestration (Caddy + Node + LiveKit + Coturn)
+├── livekit.production.yaml             # Production LiveKit SFU configuration
+├── turnserver.conf                     # Production Coturn TURN relay configuration
 ├── .gitignore                          # Excludes node_modules, build outputs, and .env files
 ├── client/                             # Frontend React + TypeScript application
-│   ├── .env.example                    # Placeholder frontend environment configuration
+│   ├── .env.example                    # Development environment template
+│   ├── .env.production.example         # Production environment template
 │   ├── index.html                      # HTML entry with Outfit typography & dark theme
 │   ├── package.json
 │   ├── tsconfig.json
 │   ├── vite.config.ts                  # Vite config with /api proxy to port 3001
 │   └── src/
 │       ├── App.tsx                     # Main router & sessionStorage recovery
+│       ├── config/
+│       │   └── api.ts                  # Dynamic API URL resolver (relative vs cross-origin)
 │       ├── types/index.ts              # Room, session, and connection type definitions
 │       ├── hooks/
 │       │   ├── useLiveKit.ts           # WebRTC hook: audio/video/screen, reconnect, online/visibility
 │       │   └── useDraggable.ts         # Pointer-event draggable window hook with screen clamping
 │       ├── components/
 │       │   ├── Navbar.tsx              # Top navigation bar with live connection status pill
-│       │   ├── VideoTile.tsx           # Floating draggable camera feed tile with mute indicators
-│       │   ├── ScreenShareStage.tsx    # Screen sharing video stage & theater backdrop
-│       │   └── ControlBar.tsx          # Bottom media controls (mic, cam, share, leave)
+│       │   ├── FloatingCamera.tsx      # Floating draggable camera feed tile with mute indicators
+│       │   ├── ScreenViewer.tsx        # Screen sharing video stage & theater backdrop
+│       │   ├── Controls.tsx            # Bottom media controls (mic, cam, share, leave)
+│       │   ├── AudioUnlockBanner.tsx   # Mobile autoplay permission banner
+│       │   └── InviteModal.tsx         # Host invitation sharing modal
 │       ├── pages/
 │       │   ├── LobbyPage.tsx           # Landing page: Create party, join party, invite codes
 │       │   └── RoomPage.tsx            # Watch party room: stage, floating tiles, alerts, retry
@@ -88,17 +100,21 @@ watch-party/
 │           ├── index.css               # Global theme tokens, typography, glassmorphism
 │           └── room.css                # Room layout, 100dvh, theater stage, responsive mobile CSS
 └── server/                             # Backend Node.js + Express API
-    ├── .env.example                    # Placeholder backend environment configuration
+    ├── .env.example                    # Development environment template
+    ├── .env.production.example         # Production environment template
+    ├── Dockerfile                      # Multi-stage production container build
     ├── package.json
     ├── tsconfig.json
+    ├── scripts/
+    │   └── verifyTurnConnectivity.ts   # Live STUN and TURN UDP socket relay tester
     ├── src/
-    │   ├── index.ts                    # Express server entry point (port 3001)
-    │   ├── config.ts                   # Environment parser, TTL policies & ICE server configs
-    │   ├── roomManager.ts              # Cryptographic room lifecycle, seats & LiveKit token minter
+    │   ├── index.ts                    # Express server entry point (port 3001) & security headers
+    │   ├── config.ts                   # Environment parser, security checks & ICE configs
+    │   ├── roomManager.ts              # Cryptographic room lifecycle, seats & token minter
     │   └── routes/
     │       └── roomRoutes.ts           # REST endpoints: /create, /join, /reconnect, /revoke, /leave
     └── tests/
-        ├── phase2_authorization.test.ts # 10 automated authorization & security tests
+        ├── phase2_auth.test.ts         # 10 automated authorization & security tests
         └── phase5_reliability.test.ts   # 7 automated reconnection & recovery tests
 ```
 
@@ -108,7 +124,7 @@ watch-party/
 
 ### Phase 1: Foundation & Design System
 - Monorepo folder structure configured with TypeScript, Vite, Node.js, and Express.
-- Polished dark purple landing page with "Create Room" and "Join Room" forms.
+- Polished dark landing page with "Create Room" and "Join Room" forms and modern `#D4DE95` design system.
 - Vite reverse proxy configured for development (`/api` -> `localhost:3001`).
 - Backend `/api/health` check endpoint.
 
@@ -135,21 +151,30 @@ watch-party/
 
 ### Phase 5: Android Compatibility, Network Recovery & Reliability
 - Dynamic viewport sizing (`100dvh`) for Android Chrome address bar collapsing.
-- Scaled down PiP camera tiles (`130px`) on narrow screens (`<= 480px`) with touch dragging.
+- Scaled down PiP camera tiles (`150px` / `110px`) on mobile with pointer touch dragging.
 - Network offline detection (`window.online`/`offline`) and `document.visibilitychange` handling.
 - `POST /api/rooms/reconnect` endpoint verifying existing participant credentials.
 - `sessionStorage` session restoration preventing room-full errors upon refresh.
 - Clean connection teardown (`room.removeAllListeners()`, `retryConnection`) preventing duplicate tracks.
 - Prominent network alert banner with a manual "Retry Connection" button.
-- ICE server delivery supporting public STUN and configurable TURN relay.
 - Comprehensive 7-test automated network recovery suite (17 total tests passing).
+
+### Phase 6: Production Deployment Preparation & Hardening
+- Dynamic frontend API URL resolver (`client/src/config/api.ts`) supporting both unified reverse-proxy and separate origin deployments.
+- Production environment verification in `server/src/config.ts` enforcing unique credentials and rejecting development keys (`devkey`/`secret`).
+- OWASP security headers added to Express (`nosniff`, `DENY`, `strict-origin-when-cross-origin`, `Strict-Transport-Security`).
+- Origin allowlist validation protecting CORS endpoints against unauthorized cross-site requests.
+- Administrative rate limiting (`adminActionLimiter`) on invite revocation and room termination.
+- Built-in UDP socket STUN/TURN tester (`server/scripts/verifyTurnConnectivity.ts`) validating NAT traversal.
+- Complete Docker Compose stack (`docker-compose.production.yml`) with Caddy automatic TLS, LiveKit SFU, Coturn TURN, and Express backend.
+- Full step-by-step beginner guide documented in `DEPLOYMENT.md`.
 
 ---
 
 ## 5. Current Feature Status
 
 | Feature | Status | Details |
-| :--- | :---: | :--- |
+| :--- | :--- :--- | :--- |
 | **Room Creation & Party Codes** | **Working** | Host creates room; generates copyable invite link and party code. |
 | **Guest Authorization** | **Working** | Guest joins with code or link; rejects invalid/revoked/expired rooms. |
 | **2-Participant Boundary** | **Working** | Exactly 1 host + 1 guest; 3rd person attempts strictly return 403. |
@@ -163,41 +188,30 @@ watch-party/
 | **Security & Token Isolation** | **Working** | All tokens minted server-side; zero secrets in client bundle. |
 | **Automated Test Suites** | **Working** | 17/17 backend tests passing (`npm test`). |
 | **Client & Server Builds** | **Working** | TypeScript compilation succeeds with 0 errors on both client and server. |
-| **STUN NAT Traversal** | **Working** | Defaults to `stun:stun.l.google.com:19302`. |
-| **TURN Relay Traversal** | **Partially Implemented** | Code & config support TURN (`TURN_URL`, `TURN_USERNAME`, `TURN_CREDENTIAL`), but requires a live TURN server (Phase 6). |
-| **Cellular WAN Streaming** | **Partially Implemented** | Verified in local environment; cross-network WAN traversal will be tested in Phase 6 deployment. |
+| **STUN NAT Traversal** | **Working** | Verified with `npm run test:turn` (Google STUN: 15–20 ms RTT). |
+| **TURN Relay Traversal** | **Configured** | Coturn container configured in `docker-compose.production.yml` and `turnserver.conf`. |
+| **Production Orchestration** | **Configured** | Caddy + Node + LiveKit + Coturn container stack ready to launch. |
 
 ---
 
-## 6. Mobile Browser & OS Constraints
-
-These behaviors are enforced by Android OS / Chrome and cannot be bypassed by web code:
-1. **Background Camera Revocation**: Android OS suspends camera hardware when Chrome is sent to the background. Returning to the tab restores track sync.
-2. **Aggressive OS Battery Optimization**: Android kills or freezes background tabs after inactivity. `sessionStorage` ensures clean session re-entry.
-3. **Autoplay Restrictions**: Unmuted audio requires user interaction; the app displays an audio unlock modal when needed.
-4. **Cellular CGNAT / Symmetric NAT**: Carrier networks block direct peer-to-peer UDP; requires TURN relay deployment in Phase 6.
-
----
-
-## 7. Verification & Build Results
+## 6. Verification & Build Results
 
 - **Backend Tests:** `17 passing, 0 failing` (`cd server && npm test`)
-  - `phase2_authorization.test.ts`: 10 passed
+  - `phase2_auth.test.ts`: 10 passed
   - `phase5_reliability.test.ts`: 7 passed
+- **STUN / TURN Socket Probe:** `REACHABLE` (`cd server && npm run test:turn`)
+  - `stun:stun.l.google.com:19302`: Reachable (20 ms latency, discovered NAT mapping)
+  - `stun:stun1.l.google.com:19302`: Reachable (15 ms latency, discovered NAT mapping)
 - **Client Build:** `tsc -b && vite build` completed with 0 errors (`dist/` created).
 - **Server Build:** `tsc` completed with 0 errors (`dist/` created).
-- **Git Status:** Clean (`main` branch up to date with `origin/main`).
-- **Secrets Audit:** Clean. All `.env` files are ignored by git; only `.env.example` placeholder files are tracked.
+- **Secrets Audit:** Clean. All `.env` files are ignored by Git; only `.env.example` and `.env.production.example` files are tracked.
 
 ---
 
-## 8. Exact Resume Point: Phase 6
+## 7. Next Step: Live Server Deployment
 
-When development resumes, proceed with **Phase 6: Production Deployment and Network Reliability**:
-
-### Phase 6 Tasks:
-1. **LiveKit Server Cloud Deployment**: Deploy LiveKit SFU to a cloud instance (e.g., VPS / Fly.io / DigitalOcean) with a public IP/domain and TLS termination.
-2. **Coturn TURN Server Setup**: Configure Coturn with static auth secret or temporary user credentials on ports 3478 (UDP/TCP) and 5349 (TLS) to guarantee mobile carrier (4G/5G) connectivity.
-3. **Backend Deployment**: Deploy the Node.js Express server to a hosting provider (Render, Railway, or VPS) with production `.env` variables (`LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `TURN_URL`, `CLIENT_ORIGIN`).
-4. **Frontend Deployment**: Deploy the Vite frontend to a static host (Vercel, Netlify, Cloudflare Pages, or Nginx) pointing to the production backend API.
-5. **Real-World Cross-Network Testing**: Execute the manual testing checklist with Host on home Wi-Fi and Guest on mobile carrier cellular data.
+All code, configurations, security headers, container definitions, and documentation are prepared.
+When ready to take the project live:
+1. Provision a VPS (e.g. Hetzner Cloud or DigitalOcean).
+2. Point your domain's DNS `A` records to the VPS IP address.
+3. Follow the exact step-by-step instructions in [DEPLOYMENT.md](file:///media/arav/Personal/Programming/watch-party/DEPLOYMENT.md).
