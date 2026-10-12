@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
-import { Copy, Check, X, Heart, ShieldCheck } from 'lucide-react';
+import { Copy, Check, X, ShieldCheck, Link } from 'lucide-react';
 
 interface InviteModalProps {
   isOpen: boolean;
   onClose: () => void;
   roomId: string;
-  passcode: string;
+  inviteSecret: string;
 }
 
 export const InviteModal: React.FC<InviteModalProps> = ({
   isOpen,
   onClose,
   roomId,
-  passcode,
+  inviteSecret,
 }) => {
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
@@ -21,7 +21,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
 
   const inviteUrl = `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(
     roomId
-  )}&key=${encodeURIComponent(passcode)}`;
+  )}&invite=${encodeURIComponent(inviteSecret)}`;
 
   const copyToClipboard = async (text: string, isLink: boolean) => {
     try {
@@ -34,7 +34,6 @@ export const InviteModal: React.FC<InviteModalProps> = ({
         setTimeout(() => setCopiedCode(false), 2000);
       }
     } catch {
-      // Fallback
       alert('Copied: ' + text);
     }
   };
@@ -44,8 +43,8 @@ export const InviteModal: React.FC<InviteModalProps> = ({
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Heart size={20} fill="#ec4899" color="#ec4899" />
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f3e8ff' }}>
+            <Link size={20} color="var(--accent-muted)" />
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>
               Invite to Watch Party
             </h3>
           </div>
@@ -54,7 +53,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
             style={{
               background: 'transparent',
               border: 'none',
-              color: '#a19bb8',
+              color: 'var(--text-secondary)',
               cursor: 'pointer',
               display: 'flex',
             }}
@@ -63,13 +62,13 @@ export const InviteModal: React.FC<InviteModalProps> = ({
           </button>
         </div>
 
-        <p style={{ color: '#a19bb8', fontSize: '0.9rem', marginBottom: '18px', lineHeight: 1.5 }}>
-          Send this private one-click link to your partner so she can join immediately from her Android phone or computer.
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '18px', lineHeight: 1.5 }}>
+          Send this private one-click link to your partner so she can join immediately.
         </p>
 
         {/* Full One-Click Link */}
         <div style={{ marginBottom: '16px' }}>
-          <label style={{ display: 'block', fontSize: '0.8rem', color: '#c084fc', marginBottom: '6px', fontWeight: 500 }}>
+          <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--accent-muted)', marginBottom: '6px', fontWeight: 500 }}>
             Private Invitation Link:
           </label>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -77,11 +76,11 @@ export const InviteModal: React.FC<InviteModalProps> = ({
               type="text"
               readOnly
               value={inviteUrl}
-              className="input-romantic"
+              className="form-input"
               style={{ fontSize: '0.85rem' }}
             />
             <button
-              className="btn-romantic"
+              className="btn-primary"
               onClick={() => copyToClipboard(inviteUrl, true)}
               style={{ padding: '0 18px', flexShrink: 0 }}
             >
@@ -91,7 +90,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({
           </div>
         </div>
 
-        {/* Room Code & Passcode breakdown */}
+        {/* Room Code breakdown */}
         <div
           style={{
             background: 'rgba(255, 255, 255, 0.03)',
@@ -105,11 +104,11 @@ export const InviteModal: React.FC<InviteModalProps> = ({
           }}
         >
           <div>
-            <div style={{ fontSize: '0.75rem', color: '#a19bb8' }}>Room ID</div>
-            <div style={{ fontSize: '1.05rem', fontWeight: 600, color: '#f3e8ff' }}>{roomId}</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Room ID</div>
+            <div style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-primary)' }}>{roomId}</div>
           </div>
           <button
-            className="btn-ghost"
+            className="btn-secondary"
             onClick={() => copyToClipboard(roomId, false)}
             style={{ padding: '6px 12px', fontSize: '0.8rem' }}
           >
@@ -118,8 +117,8 @@ export const InviteModal: React.FC<InviteModalProps> = ({
           </button>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#9ca3af' }}>
-          <ShieldCheck size={16} color="#10b981" />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
+          <ShieldCheck size={16} color="var(--success)" />
           <span>Only 2 people can enter. Strangers cannot join.</span>
         </div>
       </div>

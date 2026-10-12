@@ -7,34 +7,40 @@ import { config } from '../config.js';
 
 export const roomRouter = Router();
 
-// Rate limiter for room creation (prevents flooding room creations)
+// Rate limiter for room creation
 const createRoomLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
+  windowMs: 60 * 1000,
   max: 10,
-  message: { error: 'Too many rooms created. Please wait a moment.' },
+  message: { error: 'Too many rooms created. Please wait a minute.' },
 });
 
-// Rate limiter for join attempts (prevents brute forcing room passcodes)
+// Rate limiter for join attempts (prevents credential brute-forcing)
 const joinRoomLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 20,
+  windowMs: 60 * 1000,
+  max: 30,
   message: { error: 'Too many join attempts. Please slow down.' },
 });
 
-// Zod schemas for input validation
+// Input validation schemas
 const CreateRoomSchema = z.object({
-  hostName: z.string().trim().min(1).max(40).optional(),
+  hostName: z.string().trim().min(1, 'Name is required').max(40).optional(),
 });
 
 const JoinRoomSchema = z.object({
   roomId: z.string().trim().min(3).max(40),
-  passcode: z.string().trim().min(8).max(64),
+  inviteSecret: z.string().trim().min(8).max(64),
   guestName: z.string().trim().min(1).max(40).optional(),
+  guestId: z.string().trim().min(3).max(64).optional(),
 });
 
-const ValidateRoomSchema = z.object({
+const ValidateInviteSchema = z.object({
   roomId: z.string().trim().min(3).max(40),
-  passcode: z.string().trim().min(8).max(64),
+  inviteSecret: z.string().trim().min(8).max(64),
+});
+
+const HostActionSchema = z.object({
+  roomId: z.string().trim().min(3).max(40),
+  hostSecret: z.string().trim().min(8).max(64),
 });
 
 const LeaveRoomSchema = z.object({
@@ -42,7 +48,7 @@ const LeaveRoomSchema = z.object({
   participantId: z.string().trim().min(3).max(64),
 });
 
-// Dynamically adapts LiveKit URL for local LAN devices (e.g., Android phone on Wi-Fi)
+// Adapt LiveKit URL for local LAN connections (e.g. mobile phone on Wi-Fi)
 const resolveLiveKitUrl = (req: Request): string => {
   if (process.env.PUBLIC_LIVEKIT_URL) {
     return process.env.PUBLIC_LIVEKIT_URL;
@@ -56,22 +62,25 @@ const resolveLiveKitUrl = (req: Request): string => {
 
 /**
  * POST /api/rooms/create
- * Host initiates a new date-night watch party
+ * Host initiates a new private room
  */
 roomRouter.post('/create', createRoomLimiter, async (req: Request, res: Response) => {
   try {
     const parseResult = CreateRoomSchema.safeParse(req.body);
     if (!parseResult.success) {
-      return res.status(400).json({ error: 'Invalid host name provided.' });
+      return res.status(400).json({ error: 'Invalid name provided.' });
     }
 
     const hostName = parseResult.data.hostName || 'Host';
     const { room, hostParticipant } = roomManager.createRoom(hostName);
 
-    // Prepare LiveKit room with maxParticipants: 2 limit
+    // Safe log: Never log secrets or tokens
+    console.log(`[RoomManager] Room created: roomId=${room.id}`);
+
+    // Pre-configure room on LiveKit SFU (maxParticipants: 2)
     await livekitService.ensureRoomConfigured(room.id);
 
-    // Generate host token
+    // Generate short-lived token for authorized host
     const token = await livekitService.generateToken(
       room.id,
       hostParticipant.id,
@@ -82,91 +91,79 @@ roomRouter.post('/create', createRoomLimiter, async (req: Request, res: Response
     return res.status(201).json({
       success: true,
       roomId: room.id,
-      passcode: room.passcode,
+      hostSecret: room.hostSecret,
+      inviteSecret: room.invitation.secret,
       token,
       livekitUrl: resolveLiveKitUrl(req),
       participant: hostParticipant,
       expiresAt: room.expiresAt,
     });
   } catch (error: any) {
-    console.error('[Route /create] Error creating room:', error);
+    console.error('[RoomCreate] Error creating room');
     return res.status(500).json({ error: 'Failed to create watch party room.' });
   }
 });
 
 /**
  * POST /api/rooms/validate
- * Inspects room status without consuming a seat
+ * Inspects invitation credentials before joining
  */
 roomRouter.post('/validate', async (req: Request, res: Response) => {
   try {
-    const parseResult = ValidateRoomSchema.safeParse(req.body);
+    const parseResult = ValidateInviteSchema.safeParse(req.body);
     if (!parseResult.success) {
-      return res.status(400).json({ valid: false, error: 'Invalid room details provided.' });
+      return res.status(400).json({ valid: false, error: 'Invalid invitation credentials provided.' });
     }
 
-    const { roomId, passcode } = parseResult.data;
-    const validation = roomManager.validateCredentials(roomId, passcode);
+    const { roomId, inviteSecret } = parseResult.data;
+    const inspection = roomManager.inspectInvitation(roomId, inviteSecret);
 
-    if (!validation.valid || !validation.room) {
-      return res.status(401).json({ valid: false, error: validation.error });
+    if (!inspection.valid || !inspection.room) {
+      return res.status(inspection.status).json({
+        valid: false,
+        error: inspection.error,
+      });
     }
 
-    const room = validation.room;
-    const host = Array.from(room.participants.values()).find((p) => p.role === 'host');
-    const livekitCount = await livekitService.getLiveKitParticipantCount(roomId);
-    const participantCount = Math.max(room.participants.size, livekitCount);
+    const room = inspection.room;
+    const host = room.participants.get(room.hostId);
 
     return res.json({
       valid: true,
       roomId: room.id,
       hostName: host ? host.name : 'Host',
-      participantCount,
-      isFull: participantCount >= 2,
+      participantCount: room.participants.size,
+      isFull: room.participants.size >= 2,
     });
   } catch (error: any) {
-    console.error('[Route /validate] Error validating room:', error);
+    console.error('[RoomValidate] Error inspecting invitation');
     return res.status(500).json({ valid: false, error: 'Validation check failed.' });
   }
 });
 
 /**
  * POST /api/rooms/join
- * Guest joins the watch party with passcode
+ * Guest joins the room using the invitation credential
  */
 roomRouter.post('/join', joinRoomLimiter, async (req: Request, res: Response) => {
   try {
     const parseResult = JoinRoomSchema.safeParse(req.body);
     if (!parseResult.success) {
-      return res.status(400).json({ error: 'Please enter valid room credentials.' });
+      return res.status(400).json({ error: 'Invalid invitation details provided.' });
     }
 
-    const { roomId, passcode, guestName } = parseResult.data;
+    const { roomId, inviteSecret, guestName, guestId } = parseResult.data;
 
-    // Validate credentials first (returns 401 if invalid)
-    const validation = roomManager.validateCredentials(roomId, passcode);
-    if (!validation.valid || !validation.room) {
-      return res.status(401).json({ error: validation.error || 'Invalid room credentials or passcode.' });
+    // Atomically claim guest seat in roomManager
+    const claimResult = roomManager.claimGuestSeat(roomId, inviteSecret, guestName || 'Guest', guestId);
+    if (!claimResult.success || !claimResult.guest) {
+      return res.status(claimResult.status).json({ error: claimResult.error });
     }
 
-    const room = validation.room;
+    const guest = claimResult.guest;
+    console.log(`[RoomManager] Guest admitted: roomId=${roomId} guestId=${guest.id}`);
 
-    // Double check capacity at SFU level
-    const livekitCount = await livekitService.getLiveKitParticipantCount(roomId);
-    if (room.participants.size >= 2 || livekitCount >= 2) {
-      return res.status(403).json({
-        error: 'Watch party is full. Only 2 participants are permitted in this private room.',
-      });
-    }
-
-    const registerResult = roomManager.registerGuest(roomId, passcode, guestName || 'Guest');
-    if (!registerResult.success || !registerResult.guest) {
-      return res.status(403).json({ error: registerResult.error || 'Failed to join room.' });
-    }
-
-    const guest = registerResult.guest;
-
-    // Generate guest token
+    // Generate short-lived token for authorized guest
     const token = await livekitService.generateToken(
       roomId,
       guest.id,
@@ -182,14 +179,92 @@ roomRouter.post('/join', joinRoomLimiter, async (req: Request, res: Response) =>
       participant: guest,
     });
   } catch (error: any) {
-    console.error('[Route /join] Error joining room:', error);
+    console.error('[RoomJoin] Error admitting guest');
     return res.status(500).json({ error: 'Failed to join room.' });
   }
 });
 
 /**
+ * POST /api/rooms/revoke-invite
+ * Host revokes the current invitation credential
+ */
+roomRouter.post('/revoke-invite', async (req: Request, res: Response) => {
+  try {
+    const parseResult = HostActionSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: 'Invalid host administrative credentials.' });
+    }
+
+    const { roomId, hostSecret } = parseResult.data;
+    const result = roomManager.revokeInvitation(roomId, hostSecret);
+    if (!result.success) {
+      return res.status(403).json({ error: result.error });
+    }
+
+    console.log(`[RoomManager] Invitation revoked: roomId=${roomId}`);
+    return res.json({ success: true, message: 'Invitation credential has been revoked.' });
+  } catch (error: any) {
+    console.error('[RoomRevoke] Error revoking invitation');
+    return res.status(500).json({ error: 'Failed to revoke invitation.' });
+  }
+});
+
+/**
+ * POST /api/rooms/regenerate-invite
+ * Host generates a fresh invitation credential
+ */
+roomRouter.post('/regenerate-invite', async (req: Request, res: Response) => {
+  try {
+    const parseResult = HostActionSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: 'Invalid host administrative credentials.' });
+    }
+
+    const { roomId, hostSecret } = parseResult.data;
+    const result = roomManager.regenerateInvitation(roomId, hostSecret);
+    if (!result.success || !result.newInviteSecret) {
+      return res.status(403).json({ error: result.error });
+    }
+
+    console.log(`[RoomManager] New invitation generated: roomId=${roomId}`);
+    return res.json({
+      success: true,
+      newInviteSecret: result.newInviteSecret,
+    });
+  } catch (error: any) {
+    console.error('[RoomRegen] Error regenerating invitation');
+    return res.status(500).json({ error: 'Failed to regenerate invitation.' });
+  }
+});
+
+/**
+ * POST /api/rooms/close
+ * Host closes the watch party room
+ */
+roomRouter.post('/close', async (req: Request, res: Response) => {
+  try {
+    const parseResult = HostActionSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: 'Invalid host administrative credentials.' });
+    }
+
+    const { roomId, hostSecret } = parseResult.data;
+    const result = roomManager.closeRoom(roomId, hostSecret);
+    if (!result.success) {
+      return res.status(403).json({ error: result.error });
+    }
+
+    console.log(`[RoomManager] Room closed by host: roomId=${roomId}`);
+    return res.json({ success: true, message: 'Watch party closed.' });
+  } catch (error: any) {
+    console.error('[RoomClose] Error closing room');
+    return res.status(500).json({ error: 'Failed to close room.' });
+  }
+});
+
+/**
  * POST /api/rooms/leave
- * Notifies server that a user has exited
+ * Notifies server that a participant has left
  */
 roomRouter.post('/leave', (req: Request, res: Response) => {
   const parseResult = LeaveRoomSchema.safeParse(req.body);
@@ -201,14 +276,11 @@ roomRouter.post('/leave', (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/rooms/heartbeat
- * Keeps active session alive
+ * GET /api/rooms/status/:roomId
+ * Public sanitized room status
  */
-roomRouter.post('/heartbeat', (req: Request, res: Response) => {
-  const parseResult = LeaveRoomSchema.safeParse(req.body);
-  if (parseResult.success) {
-    const { roomId, participantId } = parseResult.data;
-    roomManager.heartbeat(roomId, participantId);
-  }
-  return res.json({ alive: true });
+roomRouter.get('/status/:roomId', (req: Request, res: Response) => {
+  const roomId = Array.isArray(req.params.roomId) ? req.params.roomId[0] : req.params.roomId;
+  const status = roomManager.getRoomStatus(roomId);
+  return res.json(status);
 });

@@ -15,7 +15,8 @@ export interface ParticipantUser {
 
 export interface RoomSession {
   roomId: string;
-  passcode: string;
+  hostSecret?: string; // Administrative secret (host only)
+  inviteSecret: string; // The invitation credential for the guest
   token: string;
   livekitUrl: string;
   role: ParticipantRole;

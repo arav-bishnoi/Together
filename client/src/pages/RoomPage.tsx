@@ -167,7 +167,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
         isOpen={isInviteOpen}
         onClose={() => setIsInviteOpen(false)}
         roomId={session.roomId}
-        passcode={session.passcode}
+        inviteSecret={session.inviteSecret}
       />
     </div>
   );

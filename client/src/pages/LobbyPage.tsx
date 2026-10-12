@@ -1,5 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Film, Lock, Sparkles, User, Copy, Check, AlertCircle, ArrowRight, ShieldCheck, RefreshCw } from 'lucide-react';
+import {
+  Film,
+  Lock,
+  Sparkles,
+  User,
+  Copy,
+  Check,
+  AlertCircle,
+  ArrowRight,
+  ShieldCheck,
+  RefreshCw,
+  Ban,
+  Link,
+  ShieldAlert,
+} from 'lucide-react';
 import type { RoomSession } from '../types/index.js';
 
 interface LobbyPageProps {
@@ -13,7 +27,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
   const [hostName, setHostName] = useState('');
   const [guestName, setGuestName] = useState('');
   const [roomId, setRoomId] = useState('');
-  const [passcode, setPasscode] = useState('');
+  const [inviteSecret, setInviteSecret] = useState('');
 
   // UI status
   const [isLoading, setIsLoading] = useState(false);
@@ -21,16 +35,19 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
   const [createdSession, setCreatedSession] = useState<RoomSession | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [isRevoked, setIsRevoked] = useState(false);
+  const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
 
   // Inspect URL for invitation query parameters on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlRoom = params.get('room');
-    const urlKey = params.get('key');
+    // Supports both 'invite' and 'key' for backwards compatibility
+    const urlInvite = params.get('invite') || params.get('key');
 
-    if (urlRoom && urlKey) {
+    if (urlRoom && urlInvite) {
       setRoomId(urlRoom);
-      setPasscode(urlKey);
+      setInviteSecret(urlInvite);
       setActiveTab('join');
     }
   }, []);
@@ -39,6 +56,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
     e.preventDefault();
     setIsLoading(true);
     setErrorMessage(null);
+    setActionSuccessMessage(null);
 
     try {
       const res = await fetch('/api/rooms/create', {
@@ -52,9 +70,11 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
         throw new Error(data.error || 'Failed to create room. Please try again.');
       }
 
+      setIsRevoked(false);
       setCreatedSession({
         roomId: data.roomId,
-        passcode: data.passcode,
+        hostSecret: data.hostSecret,
+        inviteSecret: data.inviteSecret,
         token: data.token,
         livekitUrl: data.livekitUrl,
         role: 'host',
@@ -62,7 +82,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
         displayName: data.participant.name,
       });
     } catch (err: any) {
-      setErrorMessage(err.message || 'Cannot reach backend server. Please verify backend is running on port 3001.');
+      setErrorMessage(err.message || 'Cannot reach backend server. Please verify backend is running.');
     } finally {
       setIsLoading(false);
     }
@@ -70,13 +90,14 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
 
   const handleJoinRoom = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!roomId.trim() || !passcode.trim()) {
-      setErrorMessage('Please provide both the Room ID and the invitation passcode.');
+    if (!roomId.trim() || !inviteSecret.trim()) {
+      setErrorMessage('Please provide both the Room ID and the invitation credential.');
       return;
     }
 
     setIsLoading(true);
     setErrorMessage(null);
+    setActionSuccessMessage(null);
 
     try {
       const res = await fetch('/api/rooms/join', {
@@ -84,19 +105,19 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           roomId: roomId.trim(),
-          passcode: passcode.trim(),
+          inviteSecret: inviteSecret.trim(),
           guestName: guestName.trim() || 'Guest',
         }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to join room. Check your room credentials.');
+        throw new Error(data.error || 'Failed to join room. Check your invitation link.');
       }
 
       setCreatedSession({
         roomId: data.roomId,
-        passcode: passcode.trim(),
+        inviteSecret: inviteSecret.trim(),
         token: data.token,
         livekitUrl: data.livekitUrl,
         role: 'guest',
@@ -105,6 +126,68 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
       });
     } catch (err: any) {
       setErrorMessage(err.message || 'Unable to join watch party.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRevokeInvitation = async () => {
+    if (!createdSession || !createdSession.hostSecret) return;
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const res = await fetch('/api/rooms/revoke-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomId: createdSession.roomId,
+          hostSecret: createdSession.hostSecret,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to revoke invitation.');
+      }
+
+      setIsRevoked(true);
+      setActionSuccessMessage('Invitation link revoked. Guests can no longer use this link.');
+    } catch (err: any) {
+      setErrorMessage(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRegenerateInvitation = async () => {
+    if (!createdSession || !createdSession.hostSecret) return;
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const res = await fetch('/api/rooms/regenerate-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomId: createdSession.roomId,
+          hostSecret: createdSession.hostSecret,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to generate new invitation.');
+      }
+
+      setCreatedSession({
+        ...createdSession,
+        inviteSecret: data.newInviteSecret,
+      });
+      setIsRevoked(false);
+      setActionSuccessMessage('New invitation generated. Send the updated link to your partner.');
+    } catch (err: any) {
+      setErrorMessage(err.message);
     } finally {
       setIsLoading(false);
     }
@@ -126,7 +209,9 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
   };
 
   const inviteUrl = createdSession
-    ? `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(createdSession.roomId)}&key=${encodeURIComponent(createdSession.passcode)}`
+    ? `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(
+        createdSession.roomId
+      )}&invite=${encodeURIComponent(createdSession.inviteSecret)}`
     : '';
 
   return (
@@ -137,7 +222,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '32px 16px',
+        padding: '36px 16px',
         background: 'radial-gradient(circle at 50% 15%, #18122d 0%, var(--bg-deep) 70%)',
         position: 'relative',
         minHeight: '100dvh',
@@ -150,14 +235,14 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
           top: '18%',
           left: '50%',
           transform: 'translate(-50%, -50%)',
-          width: '360px',
-          height: '360px',
+          width: '380px',
+          height: '380px',
           background: 'radial-gradient(circle, rgba(139, 92, 246, 0.14) 0%, transparent 70%)',
           pointerEvents: 'none',
         }}
       />
 
-      <div style={{ width: '100%', maxWidth: '480px', zIndex: 10 }}>
+      <div style={{ width: '100%', maxWidth: '500px', zIndex: 10 }}>
         {/* Brand Header */}
         <header style={{ textAlign: 'center', marginBottom: '28px' }}>
           <div
@@ -200,14 +285,14 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
           </p>
         </header>
 
-        {/* Success Card when Room is Initialized (Phase 1 Foundation Verification) */}
+        {/* Success Card when Room is Initialized (Phase 2 Authorization View) */}
         {createdSession ? (
           <div className="glass-panel" style={{ padding: '32px 28px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
               <div
                 style={{
-                  width: '36px',
-                  height: '36px',
+                  width: '38px',
+                  height: '38px',
                   borderRadius: '50%',
                   background: 'var(--success-bg)',
                   display: 'flex',
@@ -215,26 +300,63 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
                   justifyContent: 'center',
                 }}
               >
-                <ShieldCheck size={20} color="var(--success)" />
+                <ShieldCheck size={22} color="var(--success)" />
               </div>
               <div>
-                <h3 style={{ fontSize: '1.15rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  Room Foundation Initialized
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {createdSession.role === 'host' ? 'Private Room Created' : 'Joined Private Room'}
                 </h3>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  Role: <strong style={{ color: '#c4b5fd' }}>{createdSession.role.toUpperCase()}</strong> ({createdSession.displayName})
+                  Participant: <strong style={{ color: '#c4b5fd' }}>{createdSession.displayName}</strong> ({createdSession.role})
                 </span>
               </div>
             </div>
 
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '20px', lineHeight: 1.5 }}>
-              Your private room has been verified and registered on the backend with a strict 2-participant limit.
-            </p>
+            {/* Notification messages */}
+            {actionSuccessMessage && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 14px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'rgba(52, 211, 153, 0.12)',
+                  border: '1px solid rgba(52, 211, 153, 0.3)',
+                  color: 'var(--success)',
+                  fontSize: '0.85rem',
+                  marginBottom: '16px',
+                }}
+              >
+                <Check size={16} />
+                <span>{actionSuccessMessage}</span>
+              </div>
+            )}
 
-            {/* Room ID & Passcode breakdown */}
+            {isRevoked && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 14px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--danger-bg)',
+                  border: '1px solid var(--danger-border)',
+                  color: 'var(--danger)',
+                  fontSize: '0.85rem',
+                  marginBottom: '16px',
+                }}
+              >
+                <ShieldAlert size={16} />
+                <span>Current invitation link is REVOKED. Generate a new link below to allow your partner to join.</span>
+              </div>
+            )}
+
+            {/* Room Identifier Card */}
             <div
               style={{
-                background: 'rgba(10, 8, 17, 0.75)',
+                background: 'rgba(10, 8, 17, 0.8)',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: 'var(--radius-md)',
                 padding: '14px 18px',
@@ -246,9 +368,9 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
             >
               <div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Room Code
+                  Room Identifier
                 </div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.04em' }}>
+                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.04em' }}>
                   {createdSession.roomId}
                 </div>
               </div>
@@ -259,44 +381,93 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
                 style={{ padding: '6px 14px', fontSize: '0.8rem' }}
               >
                 {copiedCode ? <Check size={14} color="var(--success)" /> : <Copy size={14} />}
-                <span>{copiedCode ? 'Copied' : 'Copy Code'}</span>
+                <span>{copiedCode ? 'Copied' : 'Copy ID'}</span>
               </button>
             </div>
 
-            {/* Direct Invitation Link */}
-            <div style={{ marginBottom: '24px' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--accent-muted)', marginBottom: '6px', fontWeight: 500 }}>
-                Direct Partner Invitation Link:
-              </label>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <input
-                  type="text"
-                  readOnly
-                  value={inviteUrl}
-                  className="form-input"
-                  style={{ fontSize: '0.85rem' }}
-                />
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={() => copyToClipboard(inviteUrl, true)}
-                  style={{ padding: '0 18px', flexShrink: 0 }}
-                >
-                  {copiedLink ? <Check size={16} /> : <Copy size={16} />}
-                  <span>{copiedLink ? 'Copied!' : 'Copy Link'}</span>
-                </button>
+            {/* Direct Invitation Link (For Host) */}
+            {createdSession.role === 'host' && (
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', color: 'var(--accent-muted)', marginBottom: '6px', fontWeight: 500 }}>
+                  Private Guest Invitation Link:
+                </label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    readOnly
+                    value={isRevoked ? 'Invitation revoked' : inviteUrl}
+                    className="form-input"
+                    style={{
+                      fontSize: '0.85rem',
+                      opacity: isRevoked ? 0.5 : 1,
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={isRevoked}
+                    className="btn-primary"
+                    onClick={() => copyToClipboard(inviteUrl, true)}
+                    style={{ padding: '0 18px', flexShrink: 0 }}
+                  >
+                    {copiedLink ? <Check size={16} /> : <Link size={16} />}
+                    <span>{copiedLink ? 'Copied!' : 'Copy'}</span>
+                  </button>
+                </div>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', marginTop: '6px' }}>
+                  Contains the secret invitation credential. Does not expose your host administrative keys.
+                </p>
               </div>
-            </div>
+            )}
+
+            {/* Host Administration Controls */}
+            {createdSession.role === 'host' && (
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '10px',
+                  paddingTop: '8px',
+                  marginBottom: '20px',
+                  borderTop: '1px solid var(--border-subtle)',
+                }}
+              >
+                {!isRevoked ? (
+                  <button
+                    type="button"
+                    disabled={isLoading}
+                    className="btn-secondary"
+                    onClick={handleRevokeInvitation}
+                    style={{ flex: 1, fontSize: '0.82rem', borderColor: 'var(--danger-border)', color: '#fca5a5' }}
+                  >
+                    <Ban size={14} />
+                    <span>Revoke Link</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={isLoading}
+                    className="btn-primary"
+                    onClick={handleRegenerateInvitation}
+                    style={{ flex: 1, fontSize: '0.82rem' }}
+                  >
+                    <RefreshCw size={14} />
+                    <span>Generate New Link</span>
+                  </button>
+                )}
+              </div>
+            )}
 
             <div style={{ display: 'flex', justifyContent: 'center' }}>
               <button
                 type="button"
                 className="btn-secondary"
-                onClick={() => setCreatedSession(null)}
+                onClick={() => {
+                  setCreatedSession(null);
+                  setIsRevoked(false);
+                  setActionSuccessMessage(null);
+                }}
                 style={{ width: '100%' }}
               >
-                <RefreshCw size={15} />
-                <span>Create or Join Another Room</span>
+                <span>Return to Lobby</span>
               </button>
             </div>
           </div>
@@ -397,7 +568,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
                       fontWeight: 500,
                     }}
                   >
-                    Your Name
+                    Your Name (Host)
                   </label>
                   <div style={{ position: 'relative' }}>
                     <input
@@ -426,7 +597,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
                   {isLoading ? (
                     <>
                       <div className="spinner" />
-                      <span>Initializing Private Room...</span>
+                      <span>Creating Secure Room...</span>
                     </>
                   ) : (
                     <>
@@ -510,14 +681,14 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
                       fontWeight: 500,
                     }}
                   >
-                    Secret Passcode
+                    Invitation Credential
                   </label>
                   <div style={{ position: 'relative' }}>
                     <input
                       type="text"
-                      value={passcode}
-                      onChange={(e) => setPasscode(e.target.value)}
-                      placeholder="Enter passkey from your partner"
+                      value={inviteSecret}
+                      onChange={(e) => setInviteSecret(e.target.value)}
+                      placeholder="Enter private invite credential or open link"
                       required
                       disabled={isLoading}
                       className="form-input"
@@ -540,7 +711,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
                   {isLoading ? (
                     <>
                       <div className="spinner" />
-                      <span>Verifying Credentials...</span>
+                      <span>Authorizing Invitation...</span>
                     </>
                   ) : (
                     <>
