@@ -5,12 +5,19 @@ export type ConnectionStatus =
   | 'connecting'
   | 'connected'
   | 'reconnecting'
+  | 'offline'
   | 'error';
 
 export interface ParticipantUser {
   id: string;
   name: string;
   role: ParticipantRole;
+}
+
+export interface IceServerConfig {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
 }
 
 export interface RoomSession {
@@ -22,6 +29,7 @@ export interface RoomSession {
   role: ParticipantRole;
   participantId: string;
   displayName: string;
+  iceServers?: IceServerConfig[];
 }
 
 export interface DeviceState {

@@ -10,13 +10,19 @@ import {
   LocalVideoTrack,
   Participant,
 } from 'livekit-client';
-import type { ConnectionStatus } from '../types/index.js';
+import type { ConnectionStatus, IceServerConfig } from '../types/index.js';
 
 export function useLiveKit() {
   const roomRef = useRef<Room | null>(null);
+  const lastConnectParamsRef = useRef<{
+    url: string;
+    token: string;
+    iceServers?: IceServerConfig[];
+  } | null>(null);
 
   // Connection and system states
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
+  const [isOffline, setIsOffline] = useState<boolean>(typeof navigator !== 'undefined' ? !navigator.onLine : false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [deviceError, setDeviceError] = useState<string | null>(null);
   const [isAudioBlocked, setIsAudioBlocked] = useState<boolean>(false);
@@ -167,7 +173,16 @@ export function useLiveKit() {
       // Connection lifecycle states
       room.on(RoomEvent.Connected, () => {
         setConnectionStatus('connected');
+        setErrorMessage(null);
         setIsAudioBlocked(!room.canPlaybackAudio);
+      });
+
+      room.on(RoomEvent.SignalReconnecting, () => {
+        setConnectionStatus('reconnecting');
+      });
+
+      room.on(RoomEvent.SignalConnected, () => {
+        setConnectionStatus('connected');
       });
 
       room.on(RoomEvent.Reconnecting, () => {
@@ -176,6 +191,14 @@ export function useLiveKit() {
 
       room.on(RoomEvent.Reconnected, () => {
         setConnectionStatus('connected');
+        setErrorMessage(null);
+        setIsAudioBlocked(!room.canPlaybackAudio);
+
+        // Resynchronize camera track if user had camera enabled
+        const camPub = room.localParticipant?.getTrackPublication(Track.Source.Camera);
+        if (camPub?.track) {
+          setLocalCameraTrack(camPub.track as LocalVideoTrack);
+        }
       });
 
       room.on(RoomEvent.Disconnected, () => {
@@ -189,16 +212,22 @@ export function useLiveKit() {
   }, []);
 
   /**
-   * Connect to LiveKit SFU using short-lived JWT token from backend
+   * Connect to LiveKit SFU using short-lived JWT token and optional TURN/STUN ICE servers
    */
-  const connect = useCallback(async (livekitUrl: string, token: string) => {
+  const connect = useCallback(async (livekitUrl: string, token: string, iceServers?: IceServerConfig[]) => {
     try {
       setConnectionStatus('connecting');
       setErrorMessage(null);
       setDeviceError(null);
 
+      lastConnectParamsRef.current = { url: livekitUrl, token, iceServers };
+
       const room = getOrCreateRoom();
-      await room.connect(livekitUrl, token);
+      const connectOptions = iceServers && iceServers.length > 0
+        ? { rtcConfig: { iceServers: iceServers as any } }
+        : undefined;
+
+      await room.connect(livekitUrl, token, connectOptions);
       // Camera and microphone remain OFF initially until user explicitly clicks toggles
     } catch (err: any) {
       console.error('[LiveKit Connect] Error connecting to room:', err);
@@ -206,6 +235,33 @@ export function useLiveKit() {
       setErrorMessage(err?.message || 'Could not connect to LiveKit media server.');
     }
   }, [getOrCreateRoom]);
+
+  /**
+   * Cleanly retries connection with fresh or stored parameters
+   */
+  const retryConnection = useCallback(async (customUrl?: string, customToken?: string, customIceServers?: IceServerConfig[]) => {
+    const url = customUrl || lastConnectParamsRef.current?.url;
+    const token = customToken || lastConnectParamsRef.current?.token;
+    const ice = customIceServers || lastConnectParamsRef.current?.iceServers;
+
+    if (!url || !token) {
+      setErrorMessage('Missing connection parameters for retry.');
+      return;
+    }
+
+    // Clean up previous room to avoid duplicate connections
+    if (roomRef.current) {
+      try {
+        roomRef.current.removeAllListeners();
+        roomRef.current.disconnect();
+      } catch (err) {
+        console.warn('Cleanup error during retry:', err);
+      }
+      roomRef.current = null;
+    }
+
+    await connect(url, token, ice);
+  }, [connect]);
 
   /**
    * Toggle camera with graceful permission/device failure handling
@@ -354,6 +410,62 @@ export function useLiveKit() {
     setRemoteIsSpeaking(false);
   }, []);
 
+  // Monitor network online / offline state
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false);
+      if (connectionStatus === 'offline' || connectionStatus === 'disconnected') {
+        setConnectionStatus('reconnecting');
+        setErrorMessage(null);
+        if (lastConnectParamsRef.current && roomRef.current?.state !== 'connected') {
+          retryConnection();
+        }
+      }
+    };
+
+    const handleOffline = () => {
+      setIsOffline(true);
+      setConnectionStatus('offline');
+      setErrorMessage('Your internet connection was lost. Reconnecting when network returns...');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [connectionStatus, retryConnection]);
+
+  // Handle page visibility changes (Android Chrome app-switch or screen lock)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const room = roomRef.current;
+        if (room) {
+          // Do not falsely report healthy connection if disconnected while in background
+          if (room.state === 'connected') {
+            setIsAudioBlocked(!room.canPlaybackAudio);
+            setConnectionStatus('connected');
+            if (!room.canPlaybackAudio) {
+              room.startAudio().catch(() => {});
+            }
+          } else if (room.state === 'reconnecting') {
+            setConnectionStatus('reconnecting');
+          } else if (room.state === 'disconnected') {
+            setConnectionStatus('disconnected');
+            setErrorMessage('Connection closed while the tab was in the background. Tap Retry to reconnect.');
+          }
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
   // Ensure cleanup on component unmount
   useEffect(() => {
     return () => {
@@ -364,6 +476,7 @@ export function useLiveKit() {
   return {
     room: roomRef.current,
     connectionStatus,
+    isOffline,
     errorMessage,
     deviceError,
     setDeviceError,
@@ -383,6 +496,7 @@ export function useLiveKit() {
     localIsSpeaking,
     remoteIsSpeaking,
     connect,
+    retryConnection,
     disconnect,
     toggleCamera,
     toggleMicrophone,

@@ -153,7 +153,7 @@ class RoomManager {
     }
 
     if (room.participants.size >= 2) {
-      return { valid: false, status: 403, error: 'Watch party is full. Maximum 2 participants allowed.' };
+      return { valid: false, status: 403, error: 'Watch party is full. Maximum 2 participants allowed.', room };
     }
 
     return { valid: true, status: 200, room };
@@ -215,6 +215,48 @@ class RoomManager {
     room.invitation.claimedByGuestId = guestId;
 
     return { success: true, status: 200, guest: guestParticipant, room };
+  }
+
+  /**
+   * Reconnects an authorized host using their administrative hostSecret
+   */
+  public reconnectHost(roomId: string, hostSecret: string): {
+    success: boolean;
+    status: number;
+    error?: string;
+    host?: Participant;
+    room?: RoomRecord;
+  } {
+    const hostCheck = this.verifyHost(roomId, hostSecret);
+    if (!hostCheck.valid || !hostCheck.room) {
+      return { success: false, status: 401, error: hostCheck.error || 'Invalid host credentials' };
+    }
+
+    const host = hostCheck.room.participants.get(hostCheck.room.hostId);
+    if (!host) {
+      return { success: false, status: 404, error: 'Host participant record not found.' };
+    }
+
+    host.lastSeenAt = new Date();
+    return { success: true, status: 200, host, room: hostCheck.room };
+  }
+
+  /**
+   * Reconnects an authorized guest using their invitation credential and participant ID
+   */
+  public reconnectGuest(
+    roomId: string,
+    inviteSecret: string,
+    guestId?: string,
+    guestName?: string
+  ): {
+    success: boolean;
+    status: number;
+    error?: string;
+    guest?: Participant;
+    room?: RoomRecord;
+  } {
+    return this.claimGuestSeat(roomId, inviteSecret, guestName || 'Guest', guestId);
   }
 
   /**

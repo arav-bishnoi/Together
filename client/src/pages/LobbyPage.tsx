@@ -80,6 +80,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ onSessionReady }) => {
         role: 'host',
         participantId: data.participant.id,
         displayName: data.participant.name,
+        iceServers: data.iceServers,
       });
     } catch (err: any) {
       setErrorMessage(err.message || 'Cannot reach backend server. Please verify backend is running.');
@@ -123,6 +124,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ onSessionReady }) => {
         role: 'guest' as const,
         participantId: data.participant.id,
         displayName: data.participant.name,
+        iceServers: data.iceServers,
       };
 
       if (onSessionReady) {

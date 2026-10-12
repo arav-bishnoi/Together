@@ -1,80 +1,117 @@
-# Our Watch Party - Phase 3: Real-Time Audio & Video
+# Our Watch Party - Private Two-Person WebRTC Platform
 
-A private, modern WebRTC web application designed for long-distance watch parties.
-
-Phase 3 implements real-time two-person audio and video streaming powered by the official LiveKit WebRTC client and server SDKs.
-
----
-
-## Architecture & Technology Stack
-
-*   **Frontend:** React 19, Vite, TypeScript, `livekit-client`
-*   **Backend:** Node.js, Express, TypeScript, `livekit-server-sdk`
-*   **Media Server:** Standalone LiveKit Server (`livekit-server --dev`)
-*   **Security:** 128-bit invitation credentials, short-lived media JWT tokens, zero secrets in client code, and atomic 2-participant limit enforcement
+A private, modern WebRTC web application engineered for long-distance watch parties.
+Built with React 19, TypeScript, Node.js, Express, and LiveKit SFU.
 
 ---
 
-## Networking: Signalling Server vs. Media Server
+## Architecture Overview
 
-WebRTC communication involves two distinct networking layers:
-
-1.  **Signalling Server (Control & Coordination):**
-    *   Runs over WebSocket (HTTP port `7880`).
-    *   Exchanges metadata: room entry passes (JWTs), participant joins/leaves, and SDP (Session Description Protocol) handshakes.
-    *   **Does not** carry audio or video bytes; it only sets up the call.
-
-2.  **Media Server / SFU (Selective Forwarding Unit):**
-    *   Transfers the actual real-time camera and microphone packets over UDP (`port 7882` / `50000-60000`) and TCP (`port 7881`).
-    *   Receives each participant's encrypted video and audio streams and forwards them directly to the other participant with ultra-low latency (< 300ms).
-
-> **Important Internet Networking Note:**
-> Testing locally (`localhost` or home Wi-Fi) connects directly because both devices share the same local network. However, a local connection does **not** prove that a public internet deployment is configured correctly.
-> When connecting between two different cities across cellular (4G/5G) or NAT firewalls, direct UDP connections are frequently blocked by carriers (Carrier-Grade NAT). In production, a **TURN relay server** (such as LiveKit Cloud's free global relays) is required to route media traffic when direct UDP is blocked.
+*   **Frontend:** React 19, Vite, TypeScript, `livekit-client`, Vanilla CSS (Dark romantic theme, `#07060c` / `#8b5cf6`).
+*   **Backend:** Node.js, Express, TypeScript, Zod validation, in-memory concurrency-safe room manager, rate limiting.
+*   **Media Server:** LiveKit SFU (`livekit-server`), WebRTC audio/video/screenshare routing.
+*   **Security & Privacy:** 128-bit cryptographically separated credentials (`hostSecret` vs `inviteSecret`), short-lived JWT tokens (30 min TTL), zero server secrets in client bundle, and strictly enforced 2-participant limit at both API and SFU levels.
 
 ---
 
-## How to Test with Two Browser Sessions
+## Network Architecture: Ports, Firewall & NAT Traversal
 
-All three required servers are currently running:
-* **Frontend:** `http://localhost:5173`
-* **Backend:** `http://localhost:3001`
-* **LiveKit Server:** `ws://127.0.0.1:7880`
+WebRTC media communication relies on distinct signalling and media transports:
 
-### Step 1: Open the Host Session (Session 1)
-1. Open your browser (e.g. Google Chrome) and go to:
-   ```
-   http://localhost:5173
-   ```
-2. In the **"Create Room"** tab, enter your name (e.g. `Arav`) and click **"Create Private Room"**.
-3. You will see your created room card with your Room ID and private invitation link.
-4. Click **"Copy"** next to the invitation link.
-5. Click the purple **"Enter Video Room"** button to enter the live video room as Host.
-6. Notice that your camera and microphone start **disabled** (protecting privacy). Click the **Microphone** and **Camera** buttons in the bottom control pill to turn them on!
+### 1. Required TCP/UDP Ports & Firewall Rules
 
-### Step 2: Open the Guest Session (Session 2)
-1. Open a **Private / Incognito window** (or a different browser such as Firefox) so it has its own separate session.
-2. Paste the copied invitation link into the address bar.
-3. The page automatically switches to the **"Join Room"** tab with your Room ID and Invitation Credential pre-filled!
-4. Enter the guest name (e.g. `Elena`) and click **"Enter Watch Party"**.
-5. You will enter the live video room as Guest.
-6. In the guest window, click the **Microphone** and **Camera** buttons to publish the guest feed.
-
-### Step 3: Verify Real-Time Communication
-* **Two-Way Video:** In the host window, you will see the guest's live video in the left frame and your mirrored camera in the right frame. In the guest window, you will see the host's video!
-* **Two-Way Audio:** Speaking into the microphone illuminates the green speaking ring on that participant's frame and streams live audio.
-* **Mute/Unmute:** Click the microphone button in either window to mute. The other participant's window immediately shows a red muted badge.
-* **Camera Toggle:** Turn off your camera. The frame immediately switches to an elegant avatar placeholder showing "Camera is turned off".
-* **Leaving & Rejoining:** Click the red **"Leave"** button in one window. The remaining window updates immediately to "Waiting for partner to join...". You can rejoin using the invitation link.
-* **Permission Denied Test:** To test permission failures, block camera/microphone in your browser's site settings (click the tune/lock icon next to the URL) and click the camera button. A clear, user-friendly alert will appear explaining that access was denied.
+| Port | Protocol | Component | Purpose |
+| :--- | :--- | :--- | :--- |
+| **7880** | **TCP** | LiveKit Server | Signalling over HTTP / WebSockets (`ws://` / `wss://`) |
+| **7881** | **TCP** | LiveKit Server | WebRTC TURN/TCP fallback (used when UDP is blocked by strict firewalls) |
+| **7882** | **UDP** | LiveKit Server | WebRTC media transmission (RTP/RTCP packets for video, audio, screenshare) |
+| **3478** | **UDP/TCP** | STUN / TURN | Session Traversal Utilities for NAT (discovering public endpoints) |
+| **5349** | **TCP** | TURN / TLS | Encrypted TURN relay (traverses restrictive corporate and university firewalls) |
+| **3001** | **TCP** | Node.js Express | Room authorization, token minting, and invitation management API |
+| **5173** | **TCP** | Vite Dev / Web | Web application HTTP(S) serving |
 
 ---
 
-## Exact Commands to Start the Project from Scratch
+## Restrictive Networks & TURN Relay Configuration
 
-If you ever restart your laptop:
+### Why TURN is Required for Real-World Networks
+Testing locally (on `localhost` or within the same home Wi-Fi) connects directly because both devices share the same local subnet. However, a local connection **does not** prove public internet connectivity:
+* **Carrier-Grade NAT (CGNAT)**: When a guest connects from an Android phone on 4G/5G mobile data, the cellular carrier assigns a private carrier IP behind a Symmetric NAT.
+* **Symmetric NAT Behavior**: In a Symmetric NAT, external ports change dynamically for each remote destination. Direct peer-to-peer UDP hole-punching fails consistently.
+* **The Solution (TURN Relays)**: Traversal Using Relays around NAT (TURN) acts as a trusted relay in the cloud. Both endpoints send their encrypted media packets to the TURN server, which forwards them directly, guaranteeing a connection under any firewall or cellular network restriction.
 
-1. **Terminal 1 - Media Server:**
+### Configuring Custom TURN / STUN in Our Watch Party
+
+In `server/.env`, configure your TURN credentials:
+```env
+# Optional Custom TURN Relay (e.g. Metered, Coturn, Cloudflare, Twilio)
+TURN_URL=turn:turn.example.com:3478?transport=udp
+TURN_USERNAME=your-turn-username
+TURN_CREDENTIAL=your-turn-password
+```
+When configured, the backend automatically issues these ICE servers in `/api/rooms/create`, `/api/rooms/join`, and `/api/rooms/reconnect` responses. The frontend passes them directly to `room.connect(url, token, { rtcConfig: { iceServers } })`.
+
+*(If using LiveKit Cloud in production, LiveKit provides globally distributed built-in TURN relays automatically at no configuration cost).*
+
+---
+
+## Android Chrome & Mobile Browser Limitations
+
+Web applications running in mobile browsers (Android Chrome, Samsung Internet) are subject to strict operating system security and power management policies that **cannot be overridden by web code**:
+
+1. **Background App Suspension & Audio Throttling**:
+   - When a guest switches away from Chrome (e.g., answering WhatsApp or locking the phone), Android OS flags the tab as `hidden`.
+   - Android aggressively throttles background JavaScript execution to save battery.
+   - **How we handle it**: The app listens to `document.visibilitychange`. When the guest returns to the tab, the app immediately re-evaluates `room.canPlaybackAudio` and the true connection state rather than falsely reporting that the connection remained active.
+2. **Camera Access Revocation in Background**:
+   - Android OS security policy **immediately stops the camera sensor** when the tab is hidden or minimized.
+   - When returning to the app, the local video track is automatically resynchronized with the camera toggle.
+3. **Autoplay Restrictions**:
+   - Mobile browsers prohibit playing non-muted audio unless triggered by a direct user touch gesture.
+   - **How we handle it**: When audio is restricted, an interactive `AudioUnlockBanner` appears (*"Tap to unlock party audio"*). Tapping it executes `room.startAudio()`.
+4. **Orientation & Fullscreen Controls**:
+   - Mobile browsers cannot lock screen orientation programmatically unless running in standalone PWA / full screen mode.
+   - The theatre stage provides a dedicated Fullscreen button that requests HTML5 Fullscreen on the theatre stage, allowing Android devices to view the shared screen in landscape mode without browser address bar clutter.
+
+---
+
+## Comprehensive Testing Checklist
+
+Use this checklist to systematically verify real-world edge cases:
+
+- [ ] **1. Laptop Host & Android Guest (Local Wi-Fi)**:
+  - Host creates room at `http://localhost:5173`.
+  - Android phone joins via `http://<LAN_IP>:5173/?room=...&invite=...`.
+  - Verify two-way audio, video, and active speaker green ring.
+- [ ] **2. Different Networks (Laptop Wi-Fi vs. Android 5G Mobile Data)**:
+  - Host connects to Home Wi-Fi; Guest disconnects from Wi-Fi and connects via cellular 4G/5G.
+  - Verify that STUN/TURN connects the session across carrier NAT.
+- [ ] **3. Network Switching (Wi-Fi to Mobile Data Transition)**:
+  - On the Android phone, toggle Wi-Fi off while in a call so the phone transitions to 5G.
+  - Notice the `network-alert-banner` displaying *"Network interrupted. Attempting to reconnect..."*.
+  - Verify that LiveKit automatically recovers the session or that tapping **"Retry Now"** recovers the call.
+- [ ] **4. Camera or Microphone Permission Denied**:
+  - In browser site settings, block camera or microphone access.
+  - Click the camera/microphone toggle in the control bar.
+  - Verify that an informative error toast appears (e.g., *"Permission denied. Please allow camera access in your address bar"*) rather than a silent failure.
+- [ ] **5. Screen Sharing Stopped by Host**:
+  - Host shares a browser tab with tab audio.
+  - Host stops sharing from either the red in-app *"Stop Sharing"* button or Chrome's floating *"Stop sharing"* bar.
+  - Verify that the shared screen closes on the guest device while both camera and microphone feeds remain uninterrupted.
+- [ ] **6. Guest Refreshes or Briefly Disconnects**:
+  - Guest reloads the browser tab.
+  - Verify that `sessionStorage` and `/api/rooms/reconnect` automatically recover the guest's seat and token without prompting to re-enter room details.
+  - Verify that the host's session does not duplicate the guest's video or audio tracks.
+- [ ] **7. Room Expired or Invitation Revoked**:
+  - Host clicks **"Invite"** -> **"Revoke Link"**.
+  - Guest attempts to join with the revoked credential.
+  - Verify that the server rejects the join with `403 Forbidden` (*"This invitation has been revoked by the host"*).
+
+---
+
+## Exact Run Commands
+
+1. **Terminal 1 - LiveKit Server:**
    ```bash
    ~/.local/bin/livekit-server --dev
    ```
@@ -91,7 +128,9 @@ If you ever restart your laptop:
    npm run dev:client
    ```
 
-4. **Run Automated Test Suite:**
+4. **Run Automated Test Suites:**
    ```bash
-   npm test
+   cd server && npm test
+   # Runs 17 automated tests covering authorization, atomic seat claiming, concurrency, and Phase 5 session recovery.
    ```
+

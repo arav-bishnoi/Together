@@ -48,6 +48,14 @@ const LeaveRoomSchema = z.object({
   participantId: z.string().trim().min(3).max(64),
 });
 
+const ReconnectSchema = z.object({
+  roomId: z.string().trim().min(3).max(40),
+  role: z.enum(['host', 'guest']),
+  secret: z.string().trim().min(8).max(64), // hostSecret if host, inviteSecret if guest
+  participantId: z.string().trim().min(3).max(64).optional(),
+  displayName: z.string().trim().min(1).max(40).optional(),
+});
+
 // Adapt LiveKit URL for local LAN connections (e.g. mobile phone on Wi-Fi)
 const resolveLiveKitUrl = (req: Request): string => {
   if (process.env.PUBLIC_LIVEKIT_URL) {
@@ -97,6 +105,7 @@ roomRouter.post('/create', createRoomLimiter, async (req: Request, res: Response
       livekitUrl: resolveLiveKitUrl(req),
       participant: hostParticipant,
       expiresAt: room.expiresAt,
+      iceServers: config.iceServers,
     });
   } catch (error: any) {
     console.error('[RoomCreate] Error creating room');
@@ -177,10 +186,79 @@ roomRouter.post('/join', joinRoomLimiter, async (req: Request, res: Response) =>
       token,
       livekitUrl: resolveLiveKitUrl(req),
       participant: guest,
+      iceServers: config.iceServers,
     });
   } catch (error: any) {
     console.error('[RoomJoin] Error admitting guest');
     return res.status(500).json({ error: 'Failed to join room.' });
+  }
+});
+
+/**
+ * POST /api/rooms/reconnect
+ * Allows authorized host or guest to recover session and get fresh token
+ * without bypassing capacity or authorization.
+ */
+roomRouter.post('/reconnect', joinRoomLimiter, async (req: Request, res: Response) => {
+  try {
+    const parseResult = ReconnectSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: 'Invalid reconnection parameters.' });
+    }
+
+    const { roomId, role, secret, participantId, displayName } = parseResult.data;
+
+    if (role === 'host') {
+      const result = roomManager.reconnectHost(roomId, secret);
+      if (!result.success || !result.host || !result.room) {
+        return res.status(result.status).json({ error: result.error });
+      }
+
+      const token = await livekitService.generateToken(
+        roomId,
+        result.host.id,
+        result.host.name,
+        'host'
+      );
+
+      console.log(`[RoomManager] Host reconnected: roomId=${roomId}`);
+      return res.json({
+        success: true,
+        roomId,
+        token,
+        livekitUrl: resolveLiveKitUrl(req),
+        participant: result.host,
+        hostSecret: result.room.hostSecret,
+        inviteSecret: result.room.invitation.secret,
+        iceServers: config.iceServers,
+      });
+    } else {
+      const result = roomManager.reconnectGuest(roomId, secret, participantId, displayName);
+      if (!result.success || !result.guest || !result.room) {
+        return res.status(result.status).json({ error: result.error });
+      }
+
+      const token = await livekitService.generateToken(
+        roomId,
+        result.guest.id,
+        result.guest.name,
+        'guest'
+      );
+
+      console.log(`[RoomManager] Guest reconnected: roomId=${roomId} guestId=${result.guest.id}`);
+      return res.json({
+        success: true,
+        roomId,
+        token,
+        livekitUrl: resolveLiveKitUrl(req),
+        participant: result.guest,
+        inviteSecret: result.room.invitation.secret,
+        iceServers: config.iceServers,
+      });
+    }
+  } catch (error: any) {
+    console.error('[RoomReconnect] Error during reconnection');
+    return res.status(500).json({ error: 'Failed to reconnect to room.' });
   }
 });
 

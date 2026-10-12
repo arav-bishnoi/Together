@@ -7,7 +7,7 @@ import { ScreenViewer } from '../components/ScreenViewer.js';
 import { FloatingCamera } from '../components/FloatingCamera.js';
 import { AudioUnlockBanner } from '../components/AudioUnlockBanner.js';
 import { InviteModal } from '../components/InviteModal.js';
-import { User, MicOff, AlertCircle, X, UserPlus, Clock } from 'lucide-react';
+import { User, MicOff, AlertCircle, X, UserPlus, Clock, WifiOff, RefreshCw } from 'lucide-react';
 import '../styles/room.css';
 
 interface RoomPageProps {
@@ -18,6 +18,7 @@ interface RoomPageProps {
 export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
   const {
     connectionStatus,
+    isOffline,
     errorMessage,
     deviceError,
     setDeviceError,
@@ -37,6 +38,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
     localIsSpeaking,
     remoteIsSpeaking,
     connect,
+    retryConnection,
     disconnect,
     toggleCamera,
     toggleMicrophone,
@@ -46,6 +48,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
 
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'theatre' | 'call'>('theatre');
+  const [isRetrying, setIsRetrying] = useState(false);
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -61,10 +64,39 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
     }
   }, [hasScreenShare]);
 
-  // Connect to LiveKit SFU on mount
+  // Connect to LiveKit SFU on mount using provided credentials and ICE config
   useEffect(() => {
-    connect(session.livekitUrl, session.token);
-  }, [connect, session.livekitUrl, session.token]);
+    connect(session.livekitUrl, session.token, session.iceServers);
+  }, [connect, session.livekitUrl, session.token, session.iceServers]);
+
+  // Manual retry handler that queries /api/rooms/reconnect for fresh token & ICE servers
+  const handleManualRetry = async () => {
+    setIsRetrying(true);
+    try {
+      const res = await fetch('/api/rooms/reconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomId: session.roomId,
+          role: session.role,
+          secret: session.role === 'host' ? session.hostSecret : session.inviteSecret,
+          participantId: session.participantId,
+          displayName: session.displayName,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        await retryConnection(data.livekitUrl, data.token, data.iceServers);
+      } else {
+        await retryConnection(session.livekitUrl, session.token, session.iceServers);
+      }
+    } catch {
+      await retryConnection(session.livekitUrl, session.token, session.iceServers);
+    } finally {
+      setIsRetrying(false);
+    }
+  };
 
   // Attach local camera video track in side-by-side mode
   useEffect(() => {
@@ -102,6 +134,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
   // Handle participant leave
   const handleLeave = async () => {
     try {
+      sessionStorage.removeItem('watch_party_session');
       await fetch('/api/rooms/leave', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -139,28 +172,37 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
       {/* Mobile Autoplay Permission Banner */}
       {isAudioBlocked && <AudioUnlockBanner onUnlock={unlockAudio} />}
 
-      {/* Connection Error Banner */}
-      {errorMessage && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '70px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: 'var(--danger-bg)',
-            border: '1px solid var(--danger-border)',
-            color: 'var(--danger)',
-            padding: '10px 20px',
-            borderRadius: 'var(--radius-full)',
-            zIndex: 100,
-            fontSize: '0.85rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}
-        >
-          <AlertCircle size={16} />
-          <span>{errorMessage}</span>
+      {/* Network Alert / Offline / Reconnection Banner with Manual Retry Action */}
+      {(isOffline || connectionStatus === 'reconnecting' || connectionStatus === 'offline' || (connectionStatus === 'error' && errorMessage)) && (
+        <div className="network-alert-banner">
+          <div className="network-alert-content">
+            {isOffline ? (
+              <>
+                <WifiOff size={18} color="#f87171" />
+                <span>You are currently offline. Check your internet connection.</span>
+              </>
+            ) : connectionStatus === 'reconnecting' ? (
+              <>
+                <RefreshCw size={18} className="spin-slow" color="#fbbf24" />
+                <span>Network interrupted. Attempting to reconnect...</span>
+              </>
+            ) : (
+              <>
+                <AlertCircle size={18} color="#f87171" />
+                <span>{errorMessage || 'Connection interrupted.'}</span>
+              </>
+            )}
+          </div>
+
+          <button
+            type="button"
+            className="btn-retry"
+            onClick={handleManualRetry}
+            disabled={isRetrying}
+          >
+            <RefreshCw size={14} className={isRetrying ? 'spin-fast' : ''} />
+            <span>{isRetrying ? 'Reconnecting...' : 'Retry Connection'}</span>
+          </button>
         </div>
       )}
 

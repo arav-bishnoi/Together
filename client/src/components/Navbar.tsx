@@ -37,7 +37,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             className={`status-dot ${
               connectionStatus === 'reconnecting'
                 ? 'reconnecting'
-                : connectionStatus === 'disconnected'
+                : connectionStatus === 'disconnected' || connectionStatus === 'offline' || connectionStatus === 'error'
                 ? 'disconnected'
                 : ''
             }`}
@@ -47,6 +47,10 @@ export const Navbar: React.FC<NavbarProps> = ({
               ? 'Connected'
               : connectionStatus === 'reconnecting'
               ? 'Reconnecting...'
+              : connectionStatus === 'offline'
+              ? 'Offline'
+              : connectionStatus === 'error'
+              ? 'Connection Error'
               : 'Connecting...'}
           </span>
         </div>
