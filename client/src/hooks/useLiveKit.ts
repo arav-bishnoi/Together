@@ -5,6 +5,7 @@ import {
   Track,
   TrackPublication,
   RemoteTrackPublication,
+  LocalTrackPublication,
   RemoteParticipant,
   LocalVideoTrack,
   Participant,
@@ -23,14 +24,18 @@ export function useLiveKit() {
   // Local media states (Default to false: Never silently activate camera or mic without user action)
   const [isCameraEnabled, setIsCameraEnabled] = useState<boolean>(false);
   const [isMicEnabled, setIsMicEnabled] = useState<boolean>(false);
+  const [isScreenShareEnabled, setIsScreenShareEnabled] = useState<boolean>(false);
 
   // Local tracks
   const [localCameraTrack, setLocalCameraTrack] = useState<LocalVideoTrack | null>(null);
+  const [localScreenTrack, setLocalScreenTrack] = useState<LocalVideoTrack | null>(null);
 
   // Remote participant and tracks
   const [remoteParticipant, setRemoteParticipant] = useState<RemoteParticipant | null>(null);
   const [remoteCameraTrack, setRemoteCameraTrack] = useState<Track | null>(null);
   const [remoteAudioTrack, setRemoteAudioTrack] = useState<Track | null>(null);
+  const [remoteScreenTrack, setRemoteScreenTrack] = useState<Track | null>(null);
+  const [remoteScreenAudioTrack, setRemoteScreenAudioTrack] = useState<Track | null>(null);
   const [isRemoteCameraMuted, setIsRemoteCameraMuted] = useState<boolean>(true);
   const [isRemoteMicMuted, setIsRemoteMicMuted] = useState<boolean>(true);
 
@@ -73,6 +78,10 @@ export function useLiveKit() {
         } else if (track.source === Track.Source.Microphone) {
           setRemoteAudioTrack(track);
           setIsRemoteMicMuted(pub.isMuted);
+        } else if (track.source === Track.Source.ScreenShare) {
+          setRemoteScreenTrack(track);
+        } else if (track.source === Track.Source.ScreenShareAudio) {
+          setRemoteScreenAudioTrack(track);
         }
       });
 
@@ -84,6 +93,31 @@ export function useLiveKit() {
         } else if (track.source === Track.Source.Microphone) {
           setRemoteAudioTrack(null);
           setIsRemoteMicMuted(true);
+        } else if (track.source === Track.Source.ScreenShare) {
+          setRemoteScreenTrack(null);
+        } else if (track.source === Track.Source.ScreenShareAudio) {
+          setRemoteScreenAudioTrack(null);
+        }
+      });
+
+      // Local track published
+      room.on(RoomEvent.LocalTrackPublished, (pub: LocalTrackPublication) => {
+        if (pub.source === Track.Source.ScreenShare && pub.track) {
+          setIsScreenShareEnabled(true);
+          const track = pub.track as LocalVideoTrack;
+          setLocalScreenTrack(track);
+          track.mediaStreamTrack.onended = () => {
+            setIsScreenShareEnabled(false);
+            setLocalScreenTrack(null);
+          };
+        }
+      });
+
+      // Local track unpublished (e.g. user clicked browser native "Stop sharing" bar)
+      room.on(RoomEvent.LocalTrackUnpublished, (pub: LocalTrackPublication) => {
+        if (pub.source === Track.Source.ScreenShare) {
+          setIsScreenShareEnabled(false);
+          setLocalScreenTrack(null);
         }
       });
 
@@ -111,6 +145,8 @@ export function useLiveKit() {
         setRemoteParticipant(null);
         setRemoteCameraTrack(null);
         setRemoteAudioTrack(null);
+        setRemoteScreenTrack(null);
+        setRemoteScreenAudioTrack(null);
         setIsRemoteCameraMuted(true);
         setIsRemoteMicMuted(true);
       });
@@ -220,6 +256,52 @@ export function useLiveKit() {
   }, [isMicEnabled]);
 
   /**
+   * Toggle screen sharing with browser tab audio support and native cancellation handling
+   */
+  const toggleScreenShare = useCallback(async () => {
+    const room = roomRef.current;
+    if (!room) return;
+
+    setDeviceError(null);
+    try {
+      const nextState = !isScreenShareEnabled;
+      if (nextState) {
+        const pub = await room.localParticipant.setScreenShareEnabled(true, {
+          audio: true,
+          selfBrowserSurface: 'include',
+          surfaceSwitching: 'include',
+          systemAudio: 'include',
+        });
+        setIsScreenShareEnabled(true);
+        if (pub?.track) {
+          const track = pub.track as LocalVideoTrack;
+          setLocalScreenTrack(track);
+          // Handle browser native floating "Stop sharing" button
+          track.mediaStreamTrack.onended = () => {
+            setIsScreenShareEnabled(false);
+            setLocalScreenTrack(null);
+          };
+        }
+      } else {
+        await room.localParticipant.setScreenShareEnabled(false);
+        setIsScreenShareEnabled(false);
+        setLocalScreenTrack(null);
+      }
+    } catch (err: any) {
+      const errorName = err?.name || '';
+      // Gracefully handle user cancelling the browser screen picker dialog
+      if (errorName === 'NotAllowedError' || errorName === 'AbortError') {
+        console.log('Screen sharing was cancelled by user.');
+      } else {
+        console.error('Screen sharing error:', err);
+        setDeviceError(`Screen sharing failed: ${err?.message || 'Unknown error'}`);
+      }
+      setIsScreenShareEnabled(false);
+      setLocalScreenTrack(null);
+    }
+  }, [isScreenShareEnabled]);
+
+  /**
    * Unlocks audio for mobile browsers that block autoplay
    */
   const unlockAudio = useCallback(async () => {
@@ -258,10 +340,14 @@ export function useLiveKit() {
     setConnectionStatus('disconnected');
     setIsCameraEnabled(false);
     setIsMicEnabled(false);
+    setIsScreenShareEnabled(false);
     setLocalCameraTrack(null);
+    setLocalScreenTrack(null);
     setRemoteParticipant(null);
     setRemoteCameraTrack(null);
     setRemoteAudioTrack(null);
+    setRemoteScreenTrack(null);
+    setRemoteScreenAudioTrack(null);
     setIsRemoteCameraMuted(true);
     setIsRemoteMicMuted(true);
     setLocalIsSpeaking(false);
@@ -284,10 +370,14 @@ export function useLiveKit() {
     isAudioBlocked,
     isCameraEnabled,
     isMicEnabled,
+    isScreenShareEnabled,
     localCameraTrack,
+    localScreenTrack,
     remoteParticipant,
     remoteCameraTrack,
     remoteAudioTrack,
+    remoteScreenTrack,
+    remoteScreenAudioTrack,
     isRemoteCameraMuted,
     isRemoteMicMuted,
     localIsSpeaking,
@@ -296,6 +386,7 @@ export function useLiveKit() {
     disconnect,
     toggleCamera,
     toggleMicrophone,
+    toggleScreenShare,
     unlockAudio,
   };
 }

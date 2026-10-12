@@ -23,8 +23,10 @@ export const FloatingCamera: React.FC<FloatingCameraProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isMinimized, setIsMinimized] = useState(false);
 
-  const cardWidth = isMinimized ? 140 : 220;
-  const cardHeight = isMinimized ? 48 : 155;
+  // Responsive dimensions for desktop vs mobile (Android)
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+  const cardWidth = isMinimized ? (isMobile ? 110 : 140) : (isMobile ? 150 : 220);
+  const cardHeight = isMinimized ? (isMobile ? 38 : 48) : (isMobile ? 110 : 155);
 
   const { position, dragHandlers } = useDraggable({
     initialPosition,
@@ -50,13 +52,24 @@ export const FloatingCamera: React.FC<FloatingCameraProps> = ({
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
+        width: `${cardWidth}px`,
+        height: `${cardHeight}px`,
       }}
       {...dragHandlers}
     >
       {/* Top Header Bar */}
       <div className="camera-header-bar">
         <div className="participant-label">
-          <span>{participantName}</span>
+          <span
+            style={{
+              maxWidth: isMinimized ? '68px' : isMobile ? '80px' : '130px',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {participantName}
+          </span>
           {isMuted && <MicOff size={13} color="#fca5a5" />}
         </div>
 
@@ -72,6 +85,7 @@ export const FloatingCamera: React.FC<FloatingCameraProps> = ({
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
+            padding: '2px',
           }}
           title={isMinimized ? 'Expand Camera' : 'Minimize Camera'}
         >
@@ -89,6 +103,7 @@ export const FloatingCamera: React.FC<FloatingCameraProps> = ({
               playsInline
               muted={isLocal}
               className="camera-video-elem"
+              style={isLocal ? { transform: 'scaleX(-1)' } : undefined}
             />
           ) : (
             <div className="camera-off-placeholder">

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 interface Position {
   x: number;
@@ -18,7 +18,20 @@ export function useDraggable(options: DraggableOptions = {}) {
     elementHeight = 155,
   } = options;
 
-  const [position, setPosition] = useState<Position>(initialPosition);
+  // Viewport boundaries clamping helper
+  const clampPosition = useCallback((x: number, y: number, width: number, height: number): Position => {
+    const maxX = Math.max(10, window.innerWidth - width - 10);
+    const maxY = Math.max(60, window.innerHeight - height - 80);
+    return {
+      x: Math.min(Math.max(10, x), maxX),
+      y: Math.min(Math.max(60, y), maxY),
+    };
+  }, []);
+
+  const [position, setPosition] = useState<Position>(() =>
+    clampPosition(initialPosition.x, initialPosition.y, elementWidth, elementHeight)
+  );
+
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef<{ startX: number; startY: number; origX: number; origY: number }>({
     startX: 0,
@@ -26,6 +39,20 @@ export function useDraggable(options: DraggableOptions = {}) {
     origX: initialPosition.x,
     origY: initialPosition.y,
   });
+
+  // Keep element within viewport on window resize or Android orientation change
+  useEffect(() => {
+    const handleResize = () => {
+      setPosition((prev) => clampPosition(prev.x, prev.y, elementWidth, elementHeight));
+    };
+
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
+  }, [elementWidth, elementHeight, clampPosition]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     // Prevent dragging if clicking button inside the card
@@ -54,15 +81,8 @@ export function useDraggable(options: DraggableOptions = {}) {
     const nextX = dragStartRef.current.origX + deltaX;
     const nextY = dragStartRef.current.origY + deltaY;
 
-    // Viewport boundaries clamping
-    const maxX = Math.max(0, window.innerWidth - elementWidth - 10);
-    const maxY = Math.max(0, window.innerHeight - elementHeight - 70);
-
-    const clampedX = Math.min(Math.max(10, nextX), maxX);
-    const clampedY = Math.min(Math.max(60, nextY), maxY);
-
-    setPosition({ x: clampedX, y: clampedY });
-  }, [elementWidth, elementHeight]);
+    setPosition(clampPosition(nextX, nextY, elementWidth, elementHeight));
+  }, [elementWidth, elementHeight, clampPosition]);
 
   const onPointerUp = useCallback((e: React.PointerEvent) => {
     if (!isDraggingRef.current) return;
