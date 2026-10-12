@@ -20,7 +20,7 @@ interface LobbyPageProps {
   onSessionReady?: (session: RoomSession) => void;
 }
 
-export const LobbyPage: React.FC<LobbyPageProps> = () => {
+export const LobbyPage: React.FC<LobbyPageProps> = ({ onSessionReady }) => {
   const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
 
   // Form states
@@ -115,15 +115,21 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
         throw new Error(data.error || 'Failed to join room. Check your invitation link.');
       }
 
-      setCreatedSession({
+      const guestSession = {
         roomId: data.roomId,
         inviteSecret: inviteSecret.trim(),
         token: data.token,
         livekitUrl: data.livekitUrl,
-        role: 'guest',
+        role: 'guest' as const,
         participantId: data.participant.id,
         displayName: data.participant.name,
-      });
+      };
+
+      if (onSessionReady) {
+        onSessionReady(guestSession);
+      } else {
+        setCreatedSession(guestSession);
+      }
     } catch (err: any) {
       setErrorMessage(err.message || 'Unable to join watch party.');
     } finally {
@@ -456,7 +462,19 @@ export const LobbyPage: React.FC<LobbyPageProps> = () => {
               </div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {onSessionReady && (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => onSessionReady(createdSession)}
+                  style={{ width: '100%', padding: '13px 0' }}
+                >
+                  <ArrowRight size={17} />
+                  <span>Enter Video Room</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 className="btn-secondary"

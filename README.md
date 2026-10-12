@@ -1,140 +1,97 @@
-# Our Watch Party - Phase 1: Project Foundation
+# Our Watch Party - Phase 3: Real-Time Audio & Video
 
-A private, modern web application designed for long-distance watch parties.
+A private, modern WebRTC web application designed for long-distance watch parties.
 
-Phase 1 provides the complete full-stack architecture, configuration, security token infrastructure, health monitoring, and a polished landing page with create-room and join-room flows.
+Phase 3 implements real-time two-person audio and video streaming powered by the official LiveKit WebRTC client and server SDKs.
 
 ---
 
 ## Architecture & Technology Stack
 
-*   **Frontend:** React 19, Vite, TypeScript, CSS (Dark romantic theme with subtle purple accents)
-*   **Backend:** Node.js, Express, TypeScript
-*   **Security:** Cryptographically secure 128-bit invitation passcodes, strict 2-participant room enforcement, rate limiting, and short-lived tokens
-*   **Development Proxy:** Vite proxies `/api/*` directly to the Express backend on `http://127.0.0.1:3001`
+*   **Frontend:** React 19, Vite, TypeScript, `livekit-client`
+*   **Backend:** Node.js, Express, TypeScript, `livekit-server-sdk`
+*   **Media Server:** Standalone LiveKit Server (`livekit-server --dev`)
+*   **Security:** 128-bit invitation credentials, short-lived media JWT tokens, zero secrets in client code, and atomic 2-participant limit enforcement
 
 ---
 
-## Directory Structure
+## Networking: Signalling Server vs. Media Server
 
-```
-watch-party/
-├── server/                    # Node.js + Express backend API
-│   ├── src/
-│   │   ├── config.ts          # Validated environment configuration
-│   │   ├── roomManager.ts     # In-memory room security & 2-participant guard
-│   │   ├── livekitService.ts  # Token generation & capacity enforcement service
-│   │   ├── routes/
-│   │   │   └── roomRoutes.ts  # Endpoints: /api/rooms/create, /api/rooms/join, etc.
-│   │   └── index.ts           # Express server entry point & /api/health endpoint
-│   ├── .env                   # Local environment variables (git-ignored)
-│   ├── .env.example           # Placeholder environment template
-│   ├── package.json           # Backend dependencies and scripts
-│   └── tsconfig.json          # NodeNext TypeScript configuration
-├── client/                    # React + Vite + TypeScript frontend
-│   ├── src/
-│   │   ├── pages/
-│   │   │   └── LobbyPage.tsx  # Phase 1 landing page (Create Room & Join Room)
-│   │   ├── styles/
-│   │   │   └── index.css      # Dark violet design tokens & responsive styles
-│   │   ├── types/
-│   │   │   └── index.ts       # Shared TypeScript data models
-│   │   ├── App.tsx            # Main application component
-│   │   └── main.tsx           # React entry point
-│   ├── .env.example           # Frontend placeholder template
-│   ├── package.json           # Frontend dependencies and scripts
-│   ├── tsconfig.json          # Vite TypeScript configuration
-│   └── vite.config.ts         # Vite server & /api proxy configuration
-├── package.json               # Root convenience scripts
-├── .gitignore                 # Excludes node_modules, dist, .env, and logs
-└── README.md                  # This documentation
-```
+WebRTC communication involves two distinct networking layers:
+
+1.  **Signalling Server (Control & Coordination):**
+    *   Runs over WebSocket (HTTP port `7880`).
+    *   Exchanges metadata: room entry passes (JWTs), participant joins/leaves, and SDP (Session Description Protocol) handshakes.
+    *   **Does not** carry audio or video bytes; it only sets up the call.
+
+2.  **Media Server / SFU (Selective Forwarding Unit):**
+    *   Transfers the actual real-time camera and microphone packets over UDP (`port 7882` / `50000-60000`) and TCP (`port 7881`).
+    *   Receives each participant's encrypted video and audio streams and forwards them directly to the other participant with ultra-low latency (< 300ms).
+
+> **Important Internet Networking Note:**
+> Testing locally (`localhost` or home Wi-Fi) connects directly because both devices share the same local network. However, a local connection does **not** prove that a public internet deployment is configured correctly.
+> When connecting between two different cities across cellular (4G/5G) or NAT firewalls, direct UDP connections are frequently blocked by carriers (Carrier-Grade NAT). In production, a **TURN relay server** (such as LiveKit Cloud's free global relays) is required to route media traffic when direct UDP is blocked.
 
 ---
 
-## Prerequisites
+## How to Test with Two Browser Sessions
 
-Node.js (v20+ or v22 LTS) is installed in your user environment at `~/.local/node/bin`.
+All three required servers are currently running:
+* **Frontend:** `http://localhost:5173`
+* **Backend:** `http://localhost:3001`
+* **LiveKit Server:** `ws://127.0.0.1:7880`
 
-To ensure Node and npm are available in any terminal window, your `~/.bashrc` includes:
-```bash
-export PATH="$HOME/.local/bin:$HOME/.local/node/bin:$PATH"
-```
+### Step 1: Open the Host Session (Session 1)
+1. Open your browser (e.g. Google Chrome) and go to:
+   ```
+   http://localhost:5173
+   ```
+2. In the **"Create Room"** tab, enter your name (e.g. `Arav`) and click **"Create Private Room"**.
+3. You will see your created room card with your Room ID and private invitation link.
+4. Click **"Copy"** next to the invitation link.
+5. Click the purple **"Enter Video Room"** button to enter the live video room as Host.
+6. Notice that your camera and microphone start **disabled** (protecting privacy). Click the **Microphone** and **Camera** buttons in the bottom control pill to turn them on!
+
+### Step 2: Open the Guest Session (Session 2)
+1. Open a **Private / Incognito window** (or a different browser such as Firefox) so it has its own separate session.
+2. Paste the copied invitation link into the address bar.
+3. The page automatically switches to the **"Join Room"** tab with your Room ID and Invitation Credential pre-filled!
+4. Enter the guest name (e.g. `Elena`) and click **"Enter Watch Party"**.
+5. You will enter the live video room as Guest.
+6. In the guest window, click the **Microphone** and **Camera** buttons to publish the guest feed.
+
+### Step 3: Verify Real-Time Communication
+* **Two-Way Video:** In the host window, you will see the guest's live video in the left frame and your mirrored camera in the right frame. In the guest window, you will see the host's video!
+* **Two-Way Audio:** Speaking into the microphone illuminates the green speaking ring on that participant's frame and streams live audio.
+* **Mute/Unmute:** Click the microphone button in either window to mute. The other participant's window immediately shows a red muted badge.
+* **Camera Toggle:** Turn off your camera. The frame immediately switches to an elegant avatar placeholder showing "Camera is turned off".
+* **Leaving & Rejoining:** Click the red **"Leave"** button in one window. The remaining window updates immediately to "Waiting for partner to join...". You can rejoin using the invitation link.
+* **Permission Denied Test:** To test permission failures, block camera/microphone in your browser's site settings (click the tune/lock icon next to the URL) and click the camera button. A clear, user-friendly alert will appear explaining that access was denied.
 
 ---
 
-## Exact Commands to Run Phase 1
+## Exact Commands to Start the Project from Scratch
 
-### Option A: Using Root Convenience Commands (Recommended)
+If you ever restart your laptop:
 
-From the project root (`/media/arav/Personal/Programming/watch-party`):
-
-1. **Start the Backend Server (Terminal 1):**
+1. **Terminal 1 - Media Server:**
    ```bash
+   ~/.local/bin/livekit-server --dev
+   ```
+
+2. **Terminal 2 - Backend Server:**
+   ```bash
+   cd /media/arav/Personal/Programming/watch-party
    npm run dev:server
    ```
-   *Runs on port `3001`. Logs: `[WatchParty Server] Running on http://0.0.0.0:3001`*
 
-2. **Start the Frontend Application (Terminal 2):**
+3. **Terminal 3 - Frontend Client:**
    ```bash
+   cd /media/arav/Personal/Programming/watch-party
    npm run dev:client
    ```
-   *Runs on port `5173`. Open **[http://localhost:5173](http://localhost:5173)** in your browser.*
 
----
-
-### Option B: Running Individual Directories
-
-1. **Backend Server:**
+4. **Run Automated Test Suite:**
    ```bash
-   cd /media/arav/Personal/Programming/watch-party/server
-   npm install        # (Already installed)
-   npm run build      # Compiles TypeScript to dist/
-   npm run dev        # Runs dev server with auto-reload
+   npm test
    ```
-
-2. **Frontend Client:**
-   ```bash
-   cd /media/arav/Personal/Programming/watch-party/client
-   npm install        # (Already installed)
-   npm run dev -- --host 0.0.0.0 --port 5173
-   ```
-
----
-
-## Verifying the Health Endpoint
-
-To test the backend health check endpoint:
-
-```bash
-curl http://localhost:3001/api/health
-```
-
-Expected JSON response:
-```json
-{
-  "status": "ok",
-  "service": "watch-party-server",
-  "version": "1.0.0",
-  "uptime": 42,
-  "timestamp": "2026-10-12T07:00:50.746Z",
-  "environment": "development"
-}
-```
-
-Because of the Vite proxy, you can also verify it through the frontend server:
-```bash
-curl http://localhost:5173/api/health
-```
-
----
-
-## Testing the Landing Page (Phase 1)
-
-1. Open **[http://localhost:5173](http://localhost:5173)** in your browser.
-2. Under **"Create Room"**, enter your name (e.g. `Arav`) and click **"Create Private Room"**.
-3. The server validates the request and displays your **Room Code** and **One-Click Invitation Link**.
-4. Click **"Copy Link"** or **"Copy Code"** to verify the clipboard feedback.
-5. In an incognito window, paste the copied link (`http://localhost:5173/?room=...&key=...`). The page will automatically switch to the **"Join Room"** tab and pre-fill your room credentials!
-6. Enter a guest name (e.g. `Elena`) and click **"Enter Watch Party"** to verify the guest authorization flow.
-7. If a 3rd person attempts to join, the server rejects them with a **403 Forbidden** error (*"Watch party is full. Only 2 participants are permitted in this private room."*).

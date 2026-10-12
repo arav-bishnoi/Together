@@ -2,11 +2,10 @@ import React, { useEffect, useState, useRef } from 'react';
 import type { RoomSession } from '../types/index.js';
 import { useLiveKit } from '../hooks/useLiveKit.js';
 import { Navbar } from '../components/Navbar.js';
-import { ScreenViewer } from '../components/ScreenViewer.js';
-import { FloatingCamera } from '../components/FloatingCamera.js';
 import { Controls } from '../components/Controls.js';
 import { AudioUnlockBanner } from '../components/AudioUnlockBanner.js';
 import { InviteModal } from '../components/InviteModal.js';
+import { User, MicOff, AlertCircle, X, UserPlus, Clock } from 'lucide-react';
 import '../styles/room.css';
 
 interface RoomPageProps {
@@ -18,38 +17,61 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
   const {
     connectionStatus,
     errorMessage,
+    deviceError,
+    setDeviceError,
     isAudioBlocked,
     isCameraEnabled,
     isMicEnabled,
-    isScreenShareEnabled,
     localCameraTrack,
-    localScreenTrack,
     remoteParticipant,
     remoteCameraTrack,
-    remoteScreenTrack,
     remoteAudioTrack,
-    remoteScreenAudioTrack,
+    isRemoteCameraMuted,
+    isRemoteMicMuted,
     localIsSpeaking,
     remoteIsSpeaking,
     connect,
     disconnect,
     toggleCamera,
     toggleMicrophone,
-    toggleScreenShare,
     unlockAudio,
   } = useLiveKit();
 
   const [isInviteOpen, setIsInviteOpen] = useState(false);
-  const remoteVoiceAudioRef = useRef<HTMLAudioElement | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Connect to LiveKit on load
+  // Connect to LiveKit SFU on mount
   useEffect(() => {
     connect(session.livekitUrl, session.token);
   }, [connect, session.livekitUrl, session.token]);
 
-  // Attach partner's voice track to background audio element
+  // Attach local camera video track
   useEffect(() => {
-    const audioElem = remoteVoiceAudioRef.current;
+    const videoElem = localVideoRef.current;
+    if (localCameraTrack && videoElem) {
+      localCameraTrack.attach(videoElem);
+      return () => {
+        localCameraTrack.detach(videoElem);
+      };
+    }
+  }, [localCameraTrack]);
+
+  // Attach remote camera video track
+  useEffect(() => {
+    const videoElem = remoteVideoRef.current;
+    if (remoteCameraTrack && videoElem) {
+      remoteCameraTrack.attach(videoElem);
+      return () => {
+        remoteCameraTrack.detach(videoElem);
+      };
+    }
+  }, [remoteCameraTrack]);
+
+  // Attach remote audio track to audio element
+  useEffect(() => {
+    const audioElem = remoteAudioRef.current;
     if (remoteAudioTrack && audioElem) {
       remoteAudioTrack.attach(audioElem);
       return () => {
@@ -58,7 +80,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
     }
   }, [remoteAudioTrack]);
 
-  // Handle leave
+  // Handle participant leave
   const handleLeave = async () => {
     try {
       await fetch('/api/rooms/leave', {
@@ -70,22 +92,20 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
         }),
       });
     } catch {
-      // Ignore network errors on leave
+      // Ignore network errors on departure
     }
     disconnect();
     onLeave();
   };
 
-  // Determine active screen share (either partner is sharing, or you are sharing)
-  const activeScreenTrack = remoteScreenTrack || localScreenTrack;
   const partnerName = remoteParticipant?.name || 'Partner';
 
   return (
     <div className="room-container">
-      {/* Background audio player for partner's microphone */}
-      <audio ref={remoteVoiceAudioRef} autoPlay />
+      {/* Background audio player for partner's live voice */}
+      <audio ref={remoteAudioRef} autoPlay />
 
-      {/* Top Navigation */}
+      {/* Top Navbar */}
       <Navbar
         roomId={session.roomId}
         connectionStatus={connectionStatus}
@@ -94,70 +114,291 @@ export const RoomPage: React.FC<RoomPageProps> = ({ session, onLeave }) => {
         onLeaveRoom={handleLeave}
       />
 
-      {/* Android Mobile Audio Unlock Banner */}
+      {/* Mobile Autoplay Permission Banner */}
       {isAudioBlocked && <AudioUnlockBanner onUnlock={unlockAudio} />}
 
-      {/* Error Banner */}
+      {/* Connection Error Banner */}
       {errorMessage && (
         <div
           style={{
             position: 'absolute',
-            top: '64px',
+            top: '70px',
             left: '50%',
             transform: 'translateX(-50%)',
-            background: 'rgba(239, 68, 68, 0.9)',
-            color: '#ffffff',
-            padding: '8px 18px',
+            background: 'var(--danger-bg)',
+            border: '1px solid var(--danger-border)',
+            color: 'var(--danger)',
+            padding: '10px 20px',
             borderRadius: 'var(--radius-full)',
             zIndex: 100,
             fontSize: '0.85rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
           }}
         >
-          {errorMessage}
+          <AlertCircle size={16} />
+          <span>{errorMessage}</span>
         </div>
       )}
 
-      {/* Main Theatre Area */}
-      <main className="theatre-stage">
-        <ScreenViewer
-          screenTrack={activeScreenTrack}
-          screenAudioTrack={remoteScreenAudioTrack}
-          isHost={session.role === 'host'}
-          onStartShare={toggleScreenShare}
-        />
+      {/* Device/Permission Error Toast */}
+      {deviceError && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '70px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'rgba(239, 68, 68, 0.95)',
+            color: '#ffffff',
+            padding: '10px 20px',
+            borderRadius: 'var(--radius-full)',
+            zIndex: 100,
+            fontSize: '0.85rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            boxShadow: '0 8px 25px rgba(239, 68, 68, 0.4)',
+          }}
+        >
+          <AlertCircle size={16} />
+          <span>{deviceError}</span>
+          <button
+            onClick={() => setDeviceError(null)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#ffffff',
+              cursor: 'pointer',
+              display: 'flex',
+            }}
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
 
-        {/* Floating Camera 1: Partner (Guest / Host) */}
-        {remoteParticipant && (
-          <FloatingCamera
-            participantName={`${partnerName} ❤️`}
-            track={remoteCameraTrack}
-            isMuted={!remoteAudioTrack}
-            isSpeaking={remoteIsSpeaking}
-            initialPosition={{ x: 24, y: 75 }}
-            isLocal={false}
-          />
-        )}
+      {/* Main Two-Person Real-Time Video Stage */}
+      <main
+        style={{
+          flex: 1,
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          gap: '20px',
+          padding: '24px',
+          alignItems: 'center',
+          justifyContent: 'center',
+          maxWidth: '1200px',
+          margin: '0 auto',
+          width: '100%',
+          overflowY: 'auto',
+        }}
+      >
+        {/* Frame 1: Remote Partner Video */}
+        <div
+          className={`glass-panel ${remoteIsSpeaking ? 'speaking-ring' : ''}`}
+          style={{
+            height: '100%',
+            maxHeight: '440px',
+            minHeight: '260px',
+            position: 'relative',
+            overflow: 'hidden',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: '#090712',
+            border: '1.5px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-lg)',
+            boxShadow: '0 12px 35px rgba(0, 0, 0, 0.6)',
+          }}
+        >
+          {remoteParticipant ? (
+            <>
+              {remoteCameraTrack && !isRemoteCameraMuted ? (
+                <video
+                  ref={remoteVideoRef}
+                  autoPlay
+                  playsInline
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '12px',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  <div className="avatar-circle">
+                    {partnerName.charAt(0).toUpperCase() || <User size={24} />}
+                  </div>
+                  <span style={{ fontSize: '0.9rem', color: 'var(--text-tertiary)' }}>Camera is turned off</span>
+                </div>
+              )}
 
-        {/* Floating Camera 2: You */}
-        <FloatingCamera
-          participantName={`${session.displayName} (You)`}
-          track={localCameraTrack}
-          isMuted={!isMicEnabled}
-          isSpeaking={localIsSpeaking}
-          initialPosition={{ x: Math.max(20, window.innerWidth - 240), y: 75 }}
-          isLocal={true}
-        />
+              {/* Status Header Overlay */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '14px',
+                  left: '16px',
+                  right: '16px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  zIndex: 5,
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: 'rgba(0, 0, 0, 0.65)',
+                    padding: '4px 12px',
+                    borderRadius: 'var(--radius-full)',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                    color: '#ffffff',
+                    backdropFilter: 'blur(8px)',
+                  }}
+                >
+                  <span>{partnerName}</span>
+                  {isRemoteMicMuted && <MicOff size={13} color="var(--danger)" />}
+                </div>
+              </div>
+            </>
+          ) : (
+            /* Waiting for Partner Standby View */
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textAlign: 'center',
+                padding: '30px 20px',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <Clock size={40} color="var(--accent-muted)" style={{ marginBottom: '14px' }} />
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
+                Waiting for Partner to Join
+              </h3>
+              <p style={{ fontSize: '0.85rem', maxWidth: '300px', lineHeight: 1.5, marginBottom: '18px' }}>
+                Share your private invitation link with your partner so she can connect to this room.
+              </p>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => setIsInviteOpen(true)}
+                style={{ padding: '8px 18px', fontSize: '0.85rem' }}
+              >
+                <UserPlus size={16} />
+                <span>Get Invitation Link</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Frame 2: Local Participant Video (You) */}
+        <div
+          className={`glass-panel ${localIsSpeaking ? 'speaking-ring' : ''}`}
+          style={{
+            height: '100%',
+            maxHeight: '440px',
+            minHeight: '260px',
+            position: 'relative',
+            overflow: 'hidden',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: '#090712',
+            border: '1.5px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-lg)',
+            boxShadow: '0 12px 35px rgba(0, 0, 0, 0.6)',
+          }}
+        >
+          {isCameraEnabled && localCameraTrack ? (
+            <video
+              ref={localVideoRef}
+              autoPlay
+              playsInline
+              muted
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                transform: 'scaleX(-1)', // Local camera mirror
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '12px',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <div className="avatar-circle">
+                {session.displayName.charAt(0).toUpperCase() || <User size={24} />}
+              </div>
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-tertiary)' }}>Your camera is turned off</span>
+            </div>
+          )}
+
+          {/* Status Header Overlay */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '14px',
+              left: '16px',
+              right: '16px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              zIndex: 5,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'rgba(0, 0, 0, 0.65)',
+                padding: '4px 12px',
+                borderRadius: 'var(--radius-full)',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                color: '#ffffff',
+                backdropFilter: 'blur(8px)',
+              }}
+            >
+              <span>{session.displayName} (You)</span>
+              {!isMicEnabled && <MicOff size={13} color="var(--danger)" />}
+            </div>
+          </div>
+        </div>
       </main>
 
       {/* Floating Bottom Media Controls */}
       <Controls
         isCameraEnabled={isCameraEnabled}
         isMicEnabled={isMicEnabled}
-        isScreenShareEnabled={isScreenShareEnabled}
         isHost={session.role === 'host'}
         onToggleCamera={toggleCamera}
         onToggleMic={toggleMicrophone}
-        onToggleScreenShare={toggleScreenShare}
         onOpenInvite={() => setIsInviteOpen(true)}
         onLeaveRoom={handleLeave}
       />

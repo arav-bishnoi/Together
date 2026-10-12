@@ -13,11 +13,11 @@ import {
 interface ControlsProps {
   isCameraEnabled: boolean;
   isMicEnabled: boolean;
-  isScreenShareEnabled: boolean;
-  isHost: boolean;
+  isScreenShareEnabled?: boolean;
+  isHost?: boolean;
   onToggleCamera: () => void;
   onToggleMic: () => void;
-  onToggleScreenShare: () => void;
+  onToggleScreenShare?: () => void;
   onOpenInvite: () => void;
   onLeaveRoom: () => void;
 }
@@ -25,8 +25,8 @@ interface ControlsProps {
 export const Controls: React.FC<ControlsProps> = ({
   isCameraEnabled,
   isMicEnabled,
-  isScreenShareEnabled,
-  isHost,
+  isScreenShareEnabled = false,
+  isHost = false,
   onToggleCamera,
   onToggleMic,
   onToggleScreenShare,
@@ -54,8 +54,8 @@ export const Controls: React.FC<ControlsProps> = ({
           {isCameraEnabled ? <Video size={20} /> : <VideoOff size={20} />}
         </button>
 
-        {/* Screen Share Toggle (Desktop/Host friendly) */}
-        {isHost && (
+        {/* Screen Share Toggle (Only if handler provided) */}
+        {onToggleScreenShare && isHost && (
           <button
             className={`ctrl-btn ${isScreenShareEnabled ? 'active' : ''}`}
             onClick={onToggleScreenShare}
@@ -71,7 +71,7 @@ export const Controls: React.FC<ControlsProps> = ({
           onClick={onOpenInvite}
           title="Share Invite Link & Passcode"
         >
-          <UserPlus size={20} color="#c084fc" />
+          <UserPlus size={20} color="var(--accent-muted)" />
         </button>
 
         {/* Leave Room Button */}
