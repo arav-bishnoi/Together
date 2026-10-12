@@ -1,92 +1,140 @@
-# Date Night - Private Two-Person Watch Party
+# Our Watch Party - Phase 1: Project Foundation
 
-A private, romantic WebRTC watch-party web application designed for long-distance couples.
+A private, modern web application designed for long-distance watch parties.
 
-*   **Synchronized Screen Sharing:** Share a browser tab or screen with full audio.
-*   **Floating Draggable Cameras:** Both your camera and your partner's camera appear as draggable, floating picture-in-picture video cards over the video (works on both laptop mouse and Android touchscreen).
-*   **Ultra-Private:** Rooms are strictly locked to **maximum 2 participants**. Knowing a room ID alone is not enough; access requires a 128-bit secret cryptographic passcode or one-click private link.
-*   **Android Mobile Optimized:** Designed for mobile browsers with dynamic viewport sizing (`100dvh`), fullscreen landscape toggle, and tap-to-unmute audio autoplay handling.
-*   **100% Free & Open Source:** Powered by React, Vite, TypeScript, Express, and LiveKit SFU.
+Phase 1 provides the complete full-stack architecture, configuration, security token infrastructure, health monitoring, and a polished landing page with create-room and join-room flows.
 
 ---
 
-## Quick Start (Local Development)
+## Architecture & Technology Stack
 
-All required tools (Node.js LTS and LiveKit Server) are already installed in your workspace.
-
-### 1. Start the LiveKit Media Server
-In a terminal, run:
-```bash
-~/.local/bin/livekit-server --dev
-```
-*(Runs on port 7880 with default dev keys)*
-
-### 2. Start the Backend API
-In a second terminal:
-```bash
-cd /media/arav/Personal/Programming/watch-party/server
-npm run dev
-```
-*(Runs on port 3001 and handles room creation, security passcodes, and LiveKit tokens)*
-
-### 3. Start the Frontend Application
-In a third terminal:
-```bash
-cd /media/arav/Personal/Programming/watch-party/client
-npm run dev -- --host 0.0.0.0 --port 5173
-```
-Open **[http://localhost:5173](http://localhost:5173)** in your browser!
+*   **Frontend:** React 19, Vite, TypeScript, CSS (Dark romantic theme with subtle purple accents)
+*   **Backend:** Node.js, Express, TypeScript
+*   **Security:** Cryptographically secure 128-bit invitation passcodes, strict 2-participant room enforcement, rate limiting, and short-lived tokens
+*   **Development Proxy:** Vite proxies `/api/*` directly to the Express backend on `http://127.0.0.1:3001`
 
 ---
 
-## How to Test
+## Directory Structure
 
-### Testing on Your Laptop (Two Windows)
-1. Open [http://localhost:5173](http://localhost:5173) in your normal browser window.
-2. Enter your name (e.g. `Arav`) and click **"Create Private Party"**.
-3. Click the **"Invite"** button in the top navigation or bottom controls bar and click **"Copy"** next to the Private Invitation Link.
-4. Open a **Private / Incognito window** (or a different browser like Firefox/Chrome).
-5. Paste the invitation link. The Room ID and Passcode will automatically be filled in. Enter the guest name (e.g. `Elena`) and click **"Enter Watch Party"**.
-6. Both cameras and microphones will connect with zero lag. Click **"Share Screen / Tab"** on the host window to test streaming a YouTube tab with audio!
-7. Try dragging the floating camera cards around with your mouse.
+```
+watch-party/
+├── server/                    # Node.js + Express backend API
+│   ├── src/
+│   │   ├── config.ts          # Validated environment configuration
+│   │   ├── roomManager.ts     # In-memory room security & 2-participant guard
+│   │   ├── livekitService.ts  # Token generation & capacity enforcement service
+│   │   ├── routes/
+│   │   │   └── roomRoutes.ts  # Endpoints: /api/rooms/create, /api/rooms/join, etc.
+│   │   └── index.ts           # Express server entry point & /api/health endpoint
+│   ├── .env                   # Local environment variables (git-ignored)
+│   ├── .env.example           # Placeholder environment template
+│   ├── package.json           # Backend dependencies and scripts
+│   └── tsconfig.json          # NodeNext TypeScript configuration
+├── client/                    # React + Vite + TypeScript frontend
+│   ├── src/
+│   │   ├── pages/
+│   │   │   └── LobbyPage.tsx  # Phase 1 landing page (Create Room & Join Room)
+│   │   ├── styles/
+│   │   │   └── index.css      # Dark violet design tokens & responsive styles
+│   │   ├── types/
+│   │   │   └── index.ts       # Shared TypeScript data models
+│   │   ├── App.tsx            # Main application component
+│   │   └── main.tsx           # React entry point
+│   ├── .env.example           # Frontend placeholder template
+│   ├── package.json           # Frontend dependencies and scripts
+│   ├── tsconfig.json          # Vite TypeScript configuration
+│   └── vite.config.ts         # Vite server & /api proxy configuration
+├── package.json               # Root convenience scripts
+├── .gitignore                 # Excludes node_modules, dist, .env, and logs
+└── README.md                  # This documentation
+```
 
-### Testing with an Android Phone (Same Wi-Fi)
-1. Make sure your Android phone and laptop are connected to the same home Wi-Fi.
-2. On your Android phone's browser (Chrome or Samsung Internet), open:
+---
+
+## Prerequisites
+
+Node.js (v20+ or v22 LTS) is installed in your user environment at `~/.local/node/bin`.
+
+To ensure Node and npm are available in any terminal window, your `~/.bashrc` includes:
+```bash
+export PATH="$HOME/.local/bin:$HOME/.local/node/bin:$PATH"
+```
+
+---
+
+## Exact Commands to Run Phase 1
+
+### Option A: Using Root Convenience Commands (Recommended)
+
+From the project root (`/media/arav/Personal/Programming/watch-party`):
+
+1. **Start the Backend Server (Terminal 1):**
+   ```bash
+   npm run dev:server
    ```
-   http://192.168.29.207:5173
+   *Runs on port `3001`. Logs: `[WatchParty Server] Running on http://0.0.0.0:3001`*
+
+2. **Start the Frontend Application (Terminal 2):**
+   ```bash
+   npm run dev:client
    ```
-3. Enter the Room ID and Passcode generated by the host laptop, or scan/tap the copied invite link.
-4. On Android, tap the floating video cards with your finger to drag them anywhere over the video.
-5. If the Android browser pauses initial sound due to mobile autoplay rules, tap the glowing **"Tap here to listen"** banner to immediately activate audio.
+   *Runs on port `5173`. Open **[http://localhost:5173](http://localhost:5173)** in your browser.*
 
 ---
 
-## Tips for Video & Sound
+### Option B: Running Individual Directories
 
-*   **Sharing Sound:** When you click *"Share Screen"*, choose **"Chrome Tab"** in the browser picker and verify that **"Also share tab audio"** is checked. Full-screen sharing on Linux/macOS does not capture computer audio due to operating system sandboxing.
-*   **Streaming Services & DRM:** Netflix, Amazon Prime, Disney+, and Hulu use hardware-level DRM (Widevine) encryption that blacks out video capture by design. For your date nights, stream:
-    *   YouTube, Vimeo, Twitch
-    *   Personal movie files opened directly in a browser tab
-    *   Self-hosted servers (Plex, Jellyfin)
-    *   Web-based indie film platforms and DRM-free video sites
+1. **Backend Server:**
+   ```bash
+   cd /media/arav/Personal/Programming/watch-party/server
+   npm install        # (Already installed)
+   npm run build      # Compiles TypeScript to dist/
+   npm run dev        # Runs dev server with auto-reload
+   ```
+
+2. **Frontend Client:**
+   ```bash
+   cd /media/arav/Personal/Programming/watch-party/client
+   npm install        # (Already installed)
+   npm run dev -- --host 0.0.0.0 --port 5173
+   ```
 
 ---
 
-## Free Production Deployment (Long-Distance Over the Internet)
+## Verifying the Health Endpoint
 
-When you and your girlfriend are in different cities, you don't need to pay for servers or manage complex firewall ports:
+To test the backend health check endpoint:
 
-1.  **LiveKit Cloud (Free Forever Tier):**
-    *   Sign up at [cloud.livekit.io](https://cloud.livekit.io) (100% free, no credit card required).
-    *   Includes 50GB of free media bandwidth per month and global **TURN relays** (ensures media connects even on 4G/5G mobile carrier networks).
-    *   Copy your project URL (`wss://your-project.livekit.cloud`), API Key, and API Secret.
-2.  **Deploy Backend & Frontend:**
-    *   Deploy the backend to Render, Railway, or Fly.io (free tiers available). Set the environment variables:
-        ```env
-        LIVEKIT_URL=wss://your-project.livekit.cloud
-        LIVEKIT_API_KEY=your_key
-        LIVEKIT_API_SECRET=your_secret
-        ```
-    *   Deploy the frontend to Vercel, Netlify, or Render. Set `VITE_API_URL` to your backend URL.
-    *   Both you and your girlfriend will have a custom HTTPS link with zero server setup!
+```bash
+curl http://localhost:3001/api/health
+```
+
+Expected JSON response:
+```json
+{
+  "status": "ok",
+  "service": "watch-party-server",
+  "version": "1.0.0",
+  "uptime": 42,
+  "timestamp": "2026-10-12T07:00:50.746Z",
+  "environment": "development"
+}
+```
+
+Because of the Vite proxy, you can also verify it through the frontend server:
+```bash
+curl http://localhost:5173/api/health
+```
+
+---
+
+## Testing the Landing Page (Phase 1)
+
+1. Open **[http://localhost:5173](http://localhost:5173)** in your browser.
+2. Under **"Create Room"**, enter your name (e.g. `Arav`) and click **"Create Private Room"**.
+3. The server validates the request and displays your **Room Code** and **One-Click Invitation Link**.
+4. Click **"Copy Link"** or **"Copy Code"** to verify the clipboard feedback.
+5. In an incognito window, paste the copied link (`http://localhost:5173/?room=...&key=...`). The page will automatically switch to the **"Join Room"** tab and pre-fill your room credentials!
+6. Enter a guest name (e.g. `Elena`) and click **"Enter Watch Party"** to verify the guest authorization flow.
+7. If a 3rd person attempts to join, the server rejects them with a **403 Forbidden** error (*"Watch party is full. Only 2 participants are permitted in this private room."*).

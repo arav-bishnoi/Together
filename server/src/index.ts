@@ -22,7 +22,10 @@ app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     service: 'watch-party-server',
+    version: '1.0.0',
+    uptime: Math.floor(process.uptime()),
     timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
   });
 });
 

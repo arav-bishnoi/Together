@@ -143,9 +143,17 @@ roomRouter.post('/join', joinRoomLimiter, async (req: Request, res: Response) =>
 
     const { roomId, passcode, guestName } = parseResult.data;
 
+    // Validate credentials first (returns 401 if invalid)
+    const validation = roomManager.validateCredentials(roomId, passcode);
+    if (!validation.valid || !validation.room) {
+      return res.status(401).json({ error: validation.error || 'Invalid room credentials or passcode.' });
+    }
+
+    const room = validation.room;
+
     // Double check capacity at SFU level
     const livekitCount = await livekitService.getLiveKitParticipantCount(roomId);
-    if (livekitCount >= 2) {
+    if (room.participants.size >= 2 || livekitCount >= 2) {
       return res.status(403).json({
         error: 'Watch party is full. Only 2 participants are permitted in this private room.',
       });
